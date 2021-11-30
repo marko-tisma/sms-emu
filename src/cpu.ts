@@ -1,26 +1,14 @@
-import { decode } from "./decoder";
-import { disassemble } from "./disassembler";
-import { Memory } from "./memory";
-import { Register } from "./register";
+import { decode, IMODE } from "./decoder"
+import { Memory } from "./memory"
+import { Register } from "./register"
 
-export const enum RegisterName {
+export enum RegisterName {
     B, C, D, E, H, L, F, A
-}
-
-export const enum Flag {
-    SIGN = 1 << 7,
-    ZERO = 1 << 6,
-    Y = 1 << 5,
-    HALF_CARRY = 1 << 4,
-    X = 1 << 3,
-    PARITY_OVERFLOW = 1 << 2,
-    SUB = 1 << 1,
-    CARRY = 1
 }
 
 export class Cpu {
     
-    // General registers
+    // 8 bit general registers
     registers: Register[];
 
     // Shadow registers are swapped with general registers after the EXX instruction is executed
@@ -33,9 +21,33 @@ export class Cpu {
     private _ix = new Register(2);
     private _iy = new Register(2);
 
+    private i = new Register(2);
     // Flags
+    flags: {[key: string]: boolean} = {
+        s: false,
+        z: false,
+        y: false,
+        h: false,
+        x: false,
+        pv: false,
+        n: false,
+        c: false,
+    }
+
+    shadowFlags: {[key: string]: boolean} = {
+        s: false,
+        z: false,
+        y: false,
+        h: false,
+        x: false,
+        pv: false,
+        n: false,
+        c: false,
+    }
 
     halted = false;
+
+    interruptMode: IMODE;
     // Last instruction was EI
     eiRequested = false;
     // Pause was pressed
@@ -46,6 +58,9 @@ export class Cpu {
     // Temp storage for iff1 during nonmaskable interrupt
     iff2 = false;
 
+    // Hz
+    clock = 3546893;
+
     constructor(public memory: Memory) {
         this.registers = Array.from({length: 8}, () => new Register(1));
         this.shadowRegisters = Array.from({length: 8}, () => new Register(1));
@@ -54,15 +69,15 @@ export class Cpu {
 
     // Returns the number of TSTATES this instruction took
     run(op: number): number {
-        if (this.halted) return 1;
+        if (this.halted) return 4;
         this.handleInterrupts();
         if (this.eiRequested) {
             this.iff1 = true;
             this.iff2 = true;
+            this.eiRequested = false;
         }
         const instruction = decode(op, this);
-        console.log(disassemble(instruction, this));
-        instruction.execute(this, ...instruction.params);
+        instruction.execute();
         return instruction.tstates;
     }
 
@@ -99,47 +114,36 @@ export class Cpu {
     }
 
     next8() {
-        const value = this.memory.read8(this.pc++);
-        return value;
+        return this.memory.read8(this.pc++);
+    }
+
+    next8Signed() {
+        let byte = this.memory.read8(this.pc++);
+        byte = new Int8Array([byte])[0];
+        return byte;
     }
 
     next16() {
-        const word = this.memory.read16(this.pc);
+        const value = this.memory.read16(this.pc);
         this.pc += 2;
-        return word;
+        return value;
     }
 
-    getFlag(flag: Flag): boolean{
-        return !!(this.f & flag);
-    }
+    get ['(ix)'] (): number { return this.memory.read8(this.ix) }
 
-    setFlag(flag: Flag, value: boolean) {
-        !value ? this.f &= ~(flag) : this.f |= flag;
-    }
+    set ['(ix)'] (value: number) { this.memory.write8(this.ix, value) }
 
-    get flag_z(): boolean { return this.getFlag(Flag.ZERO); }
+    get ['(iy)'] (): number { return this.memory.read8(this.iy) }
 
-    set flag_z(value: boolean) { this.setFlag(Flag.ZERO, value); }
+    set ['(iy)'] (value: number) { this.memory.write8(this.iy, value) }
 
-    get flag_s(): boolean { return this.getFlag(Flag.SIGN); }
+    get ['(ix + d)'] (): number { return this.memory.read8(this.ix + this.next8Signed()) }
 
-    set flag_s(value: boolean) { this.setFlag(Flag.SIGN, value); }
+    set ['(ix + d)'] (value: number) { this.memory.write8(this.ix + this.next8Signed(), value) }
 
-    get flag_h(): boolean { return this.getFlag(Flag.HALF_CARRY); }
+    get ['(iy + d)'] (): number { return this.memory.read8(this.iy + this.next8Signed()) }
 
-    set flag_h(value: boolean) { this.setFlag(Flag.HALF_CARRY, value); }
-
-    get flag_pv(): boolean { return this.getFlag(Flag.PARITY_OVERFLOW); }
-
-    set flag_pv(value: boolean) { this.setFlag(Flag.PARITY_OVERFLOW, value); }
-
-    get flag_n(): boolean { return this.getFlag(Flag.SUB); }
-
-    set flag_n(value: boolean) { this.setFlag(Flag.SUB, value); }
-
-    get flag_c(): boolean { return this.getFlag(Flag.CARRY); }
-
-    set flag_c(value: boolean) { this.setFlag(Flag.CARRY, value); }
+    set ['(iy + d)'] (value: number) { this.memory.write8(this.iy + this.next8Signed(), value) }
 
     get ix(): number { return this._ix.value; }
 
@@ -165,35 +169,35 @@ export class Cpu {
     
     set iyl(value: number) { this._iy.value = (this.iyh << 8) + (value & 0xff); }
 
-    get _hl_(): number { return this.memory.read8(this.hl); }  
+    get ['(hl)'] (): number { return this.memory.read8(this.hl); }  
 
-    set _hl_(value: number) { this.memory.write8(this.hl, value); } 
+    set ['(hl)'] (value: number) { this.memory.write8(this.hl, value); } 
 
-    get af(): number { return (this.registers[RegisterName.A].value << 8) + this.registers[RegisterName.F].value; }
+    get af(): number { return (this.registers[RegisterName.A].value << 8) + this.f; }
 
     set af(value: number) {
-        this.registers[RegisterName.F].value = value & 0xFF;
+        this.f = value & 0xff;
         this.registers[RegisterName.A].value = value >>> 8;
     }
 
     get bc(): number { return (this.registers[RegisterName.B].value << 8) + this.registers[RegisterName.C].value; }
 
     set bc(value: number) {
-        this.registers[RegisterName.C].value = value & 0xFF;
+        this.registers[RegisterName.C].value = value & 0xff;
         this.registers[RegisterName.B].value = value >>> 8;
     }
 
     get de(): number { return (this.registers[RegisterName.D].value << 8) + this.registers[RegisterName.E].value; }
 
     set de(value: number) {
-        this.registers[RegisterName.E].value = value & 0xFF;
+        this.registers[RegisterName.E].value = value & 0xff;
         this.registers[RegisterName.D].value = value >>> 8;
     }
 
     get hl(): number { return (this.registers[RegisterName.H].value << 8) + this.registers[RegisterName.L].value; }
 
     set hl(value: number) {
-        this.registers[RegisterName.L].value = value & 0xFF;
+        this.registers[RegisterName.L].value = value & 0xff;
         this.registers[RegisterName.H].value = value >>> 8;
     }
 
@@ -225,9 +229,24 @@ export class Cpu {
 
     set l(value: number) { this.registers[RegisterName.L].value = value; }
 
-    get f(): number { return this.registers[RegisterName.F].value; }
+    get f(): number {
+        let f = 0;
+        let shift = 7;
+        for (const flag of Object.values(this.flags)) {
+            f |= (+flag) << shift; 
+            shift--;
+        }
+        return f;
+    }
 
-    set f(value: number) { this.registers[RegisterName.F].value = value; }
+    set f(value: number) {
+        let mask = 1 << 7;
+        for (const flag of Object.keys(this.flags)) {
+            this.flags[flag] = !!(value & mask);
+            mask >>>= 1;
+        }
+        this.registers[RegisterName.F].value = value; 
+    }
 
     get pc(): number { return this._pc.value; }
 

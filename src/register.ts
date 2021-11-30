@@ -1,19 +1,15 @@
 export class Register {
 
-    private data: ArrayBuffer;
-    private view: DataView;
+    private data = 0;
 
-    constructor(private bytes: 1 | 2) {
-        this.data = new ArrayBuffer(bytes);
-        this.view = new DataView(this.data);
-    }
+    constructor(private bytes: 1 | 2) { }
 
     get value(): number {
-       return this.bytes == 1 ? this.view.getUint8(0) : this.view.getUint16(0); 
+       return this.bytes == 1 ? this.data & 0xff : this.data & 0xffff; 
     }
 
     set value(value: number) {
-        this.bytes == 1 ? this.view.setUint8(0, value) : this.view.setUint16(0, value);
+        this.bytes == 1 ? this.data = value & 0xff : this.data = value & 0xffff;
     }
 
 }

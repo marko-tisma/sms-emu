@@ -1,5 +1,4 @@
-import * as fs from "fs";
-import { Cartridge } from "./cartridge";
+import { Cartridge } from "./cartridge"
 
 export class Memory {
 
@@ -36,10 +35,6 @@ export class Memory {
         this.framePages[0] = 0;
         this.framePages[1] = 1;
         this.framePages[2] = 2;
-        if (fs.existsSync('debug.txt')) {
-            fs.unlinkSync('debug.txt');
-        }
-        fs.openSync('debug.txt', 'w');
     }
     
     read8(address: number): number {
@@ -101,6 +96,14 @@ export class Memory {
         this.write8(address + 1, value >>> 8);
     }
 
+    readn(address: number, count: number) {
+        const values = [];
+        for (let i = 0; i < count; i++) {
+            values.push(this.read8(address + i));
+        }
+        return values;
+    }
+
     in(port: number) {
         port &= 0xff;
         return this.ports[port];
@@ -108,13 +111,5 @@ export class Memory {
 
     out(port: number, value: number) {
         this.ports[port] = value;
-        if (port == 0xfd) {
-            fs.appendFileSync('debug.txt', String.fromCharCode(value));
-            this.columnsConsole++;
-            if (this.columnsConsole == 81) {
-                fs.appendFileSync('debug.txt', "\n");
-                this.columnsConsole = 0;
-            }
-        }
     }
 }
