@@ -1,6 +1,6 @@
-import { decode, IMODE } from "./decoder"
-import { Memory } from "./memory"
-import { Register } from "./register"
+import { Bus } from "./bus";
+import { decode, IMODE } from "./decoder";
+import { Register } from "./register";
 
 export enum RegisterName {
     B, C, D, E, H, L, F, A
@@ -21,7 +21,8 @@ export class Cpu {
     private _ix = new Register(2);
     private _iy = new Register(2);
 
-    private i = new Register(2);
+    private _i = new Register(1);
+
     // Flags
     flags: {[key: string]: boolean} = {
         s: false,
@@ -58,10 +59,8 @@ export class Cpu {
     // Temp storage for iff1 during nonmaskable interrupt
     iff2 = false;
 
-    // Hz
-    clock = 3546893;
 
-    constructor(public memory: Memory) {
+    constructor(public bus: Bus) {
         this.registers = Array.from({length: 8}, () => new Register(1));
         this.shadowRegisters = Array.from({length: 8}, () => new Register(1));
         this.sp = 0xdff0;
@@ -69,8 +68,8 @@ export class Cpu {
 
     // Returns the number of TSTATES this instruction took
     run(op: number): number {
-        if (this.halted) return 4;
         this.handleInterrupts();
+        if (this.halted) return 4;
         if (this.eiRequested) {
             this.iff1 = true;
             this.iff2 = true;
@@ -82,7 +81,7 @@ export class Cpu {
     }
 
     handleInterrupts(): void {
-        if (this.resetRequested) {
+        if (this.resetRequested && !this.handlingReset) {
             this.resetRequested = false;
             this.handlingReset = true;
             this.iff2 = this.iff1;
@@ -91,17 +90,23 @@ export class Cpu {
             this.push16(this.pc);
             this.pc = 0x66;
         }
+        if (this.bus.vdp.requestedInterrupt) {
+            if (this.iff1 && this.interruptMode === 1) {
+                this.iff1 = this.iff2 = false;
+                this.halted = false;
+                this.push16(this.pc);
+                this.pc = 0x38;
+            }
+        }
     }
 
     push8(value: number) {
         this.sp--;
-        this.memory.write8(this.sp, value);
+        this.bus.write8(this.sp, value);
     }
 
     pop8(): number {
-        const value = this.memory.read8(this.sp);
-        this.sp++;
-        return value;
+        return this.bus.read8(this.sp++);
     }
 
     push16(value: number) {
@@ -113,37 +118,33 @@ export class Cpu {
         return this.pop8() + (this.pop8() << 8);
     }
 
-    next8() {
-        return this.memory.read8(this.pc++);
+    next8(): number {
+        return this.bus.read8(this.pc++);
     }
 
-    next8Signed() {
-        let byte = this.memory.read8(this.pc++);
-        byte = new Int8Array([byte])[0];
+    next8Signed(): number {
+        let byte = this.bus.read8(this.pc++);
+        byte = (byte << 24) >> 24;
         return byte;
     }
 
-    next16() {
-        const value = this.memory.read16(this.pc);
+    next16(): number {
+        const value = this.bus.read16(this.pc);
         this.pc += 2;
         return value;
     }
 
-    get ['(ix)'] (): number { return this.memory.read8(this.ix) }
+    get i(): number { return this._i.value; }
 
-    set ['(ix)'] (value: number) { this.memory.write8(this.ix, value) }
+    set i(value: number) { this._i.value = value; }
 
-    get ['(iy)'] (): number { return this.memory.read8(this.iy) }
+    get ['(ix)'] (): number { return this.bus.read8(this.ix) }
 
-    set ['(iy)'] (value: number) { this.memory.write8(this.iy, value) }
+    set ['(ix)'] (value: number) { this.bus.write8(this.ix, value) }
 
-    get ['(ix + d)'] (): number { return this.memory.read8(this.ix + this.next8Signed()) }
+    get ['(iy)'] (): number { return this.bus.read8(this.iy) }
 
-    set ['(ix + d)'] (value: number) { this.memory.write8(this.ix + this.next8Signed(), value) }
-
-    get ['(iy + d)'] (): number { return this.memory.read8(this.iy + this.next8Signed()) }
-
-    set ['(iy + d)'] (value: number) { this.memory.write8(this.iy + this.next8Signed(), value) }
+    set ['(iy)'] (value: number) { this.bus.write8(this.iy, value) }
 
     get ix(): number { return this._ix.value; }
 
@@ -169,9 +170,9 @@ export class Cpu {
     
     set iyl(value: number) { this._iy.value = (this.iyh << 8) + (value & 0xff); }
 
-    get ['(hl)'] (): number { return this.memory.read8(this.hl); }  
+    get ['(hl)'] (): number { return this.bus.read8(this.hl); }  
 
-    set ['(hl)'] (value: number) { this.memory.write8(this.hl, value); } 
+    set ['(hl)'] (value: number) { this.bus.write8(this.hl, value); } 
 
     get af(): number { return (this.registers[RegisterName.A].value << 8) + this.f; }
 

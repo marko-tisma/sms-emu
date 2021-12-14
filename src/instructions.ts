@@ -1,25 +1,26 @@
-import * as Alu from "./alu"
-import { Cpu, RegisterName } from "./cpu"
-import { ALU, BLI, CC, IMODE, R, ROT, RP } from "./decoder"
-
+import * as alu from "./alu";
+import { Cpu, RegisterName } from "./cpu";
+import { ALU, BLI, CC, IMODE, R, ROT, RP } from "./decoder";
+import { toHex } from "./util";
 
 export interface Instruction {
     tstates: number,
     execute: () => void,
-    disassembly: string,
+    disassembly: () => string,
     address?: number
-}
-
-export const toHex = (value: number, padding: number) => {
-    if (value === undefined) return;
-    return value.toString(16).padStart(padding, '0');
 }
 
 export const get = (cpu: Cpu, instruction: (cpu: Cpu, ...params: any) => Instruction, ...params: any): Instruction => {
     return instruction(cpu, ...params);
 }
 
-export const nop = () => {return {tstates:4, execute: function() {}, disassembly: 'nop'}}
+export const nop = () => {
+    return {
+        tstates:4, 
+        execute: () => {},
+        disassembly: () => 'nop'
+    }
+}
 
 export const noni = (cpu: Cpu) => {
     return {
@@ -29,7 +30,7 @@ export const noni = (cpu: Cpu) => {
             cpu.iff2 = false;
             cpu.eiRequested = true;
         },
-        disassembly: 'noni'
+        disassembly: () => 'noni'
     }
 }
 
@@ -47,11 +48,12 @@ export const ex_af_af1 = (cpu: Cpu) => {
             cpu.flags = cpu.shadowFlags;
             cpu.shadowFlags = tmpFlags;
         },
-        disassembly: 'ex af af`' 
+        disassembly: () => 'ex af af`' 
     }
 }
 
 export const djnz_d = (cpu: Cpu, d: number) => {
+    const pc = cpu.pc
     return {
         tstates: cpu.b - 1 > 0 ? 13 : 7,
         execute: () => {
@@ -60,27 +62,31 @@ export const djnz_d = (cpu: Cpu, d: number) => {
                 cpu.pc += d; 
             }
         },
-        disassembly: `djnz $$${toHex(cpu.pc + d, 2)}`
+        disassembly: () => `djnz $${toHex(pc + d, 2)}`
     }
 }
 
 export const jr_d = (cpu: Cpu, d: number) => {
+    const pc = cpu.pc
     return {
         tstates: 12,
         execute: () => {
             cpu.pc += d; 
         },
-        disassembly: `jr $${toHex(cpu.pc + d, 2)}`
+        disassembly: () => `jr $${toHex(pc + d, 2)}`
     }
 }
 
 export const jr_cc = (cpu: Cpu, cc: CC, d: number) => {
+    const pc = cpu.pc;
     return {
         tstates: cc(cpu) ? 12 : 7,
         execute: () => {
-            cpu.pc += d;
+            if (cc(cpu)) {
+                cpu.pc += d;
+            }
         },
-        disassembly: `jr ${cc.fname}, $${toHex(cpu.pc + d, 2)}`
+        disassembly: () => `jr ${cc.iname}, $${toHex(pc + d, 2)}`
     }
 }
 
@@ -90,7 +96,7 @@ export const ld_rp_nn = (cpu: Cpu, rp: RP, nn: number) => {
         execute: () => {
             cpu[rp] = nn;
         },
-        disassembly: `ld ${rp}, $${toHex(nn, 4)}`
+        disassembly: () => `ld ${rp}, $${toHex(nn, 4)}`
     }
 }
 
@@ -98,9 +104,9 @@ export const add_rp_rp = (cpu: Cpu, dst: RP, src: RP) => {
     return {
         tstates: dst === 'ix' || dst === 'iy' ? 15 : 11,
         execute: () => {
-            cpu[dst] = Alu.add16(cpu, cpu[dst], cpu[src]);
+            cpu[dst] = alu.add16(cpu, cpu[dst], cpu[src]);
         },
-        disassembly: `add ${dst}, ${src}`
+        disassembly: () => `add ${dst}, ${src}`
     }
 }
 
@@ -108,19 +114,19 @@ export const ld_mem_a = (cpu: Cpu, dst: RP) => {
     return {
         tstates: 7,
         execute: () => {
-            cpu.memory.write8(cpu[dst], cpu.a);
+            cpu.bus.write8(cpu[dst], cpu.a);
         },
-        disassembly: `ld (${dst}), a`
+        disassembly: () => `ld (${dst}), a`
     }
 }
 
 export const ld_nn_r = (cpu: Cpu, src: R, nn: number) => {
     return {
-        tstates: src.length === 1 ? 13 : 16,
+        tstates: 13,
         execute: () => {
-            src.length === 1 ? cpu.memory.write8(nn, cpu[src]): cpu.memory.write16(nn, cpu[src])
+            cpu.bus.write8(nn, cpu[src]);
         },
-        disassembly: `ld ($${toHex(nn, 4)}), src`
+        disassembly: () => `ld ($${toHex(nn, 4)}), ${src}`
     }
 }
 
@@ -128,20 +134,9 @@ export const ld_a_mem = (cpu: Cpu, src: R) => {
     return {
         tstates: 7,
         execute: () => {
-            cpu.a = cpu.memory.read8(cpu[src]);
+            cpu.a = cpu.bus.read8(cpu[src]);
         },
-        disassembly: `ld a, (${src})`
-    }
-}
-
-
-export const ld_hl_mem_nn = (cpu: Cpu, nn: number) => {
-    return {
-        tstates: 16,
-        execute: () => {
-            cpu.hl = cpu.memory.read16(nn);
-        },
-        disassembly: `ld hl, ($${toHex(nn, 4)})`
+        disassembly: () => `ld a, (${src})`
     }
 }
 
@@ -149,59 +144,59 @@ export const ld_a_mem_nn = (cpu: Cpu, nn: number) => {
     return {
         tstates: 13,
         execute: () => {
-            cpu.a = cpu.memory.read8(nn);
+            cpu.a = cpu.bus.read8(nn);
         },
-        disassembly: `ld a, ($${toHex(nn, 4)})`
+        disassembly: () => `ld a, ($${toHex(nn, 4)})`
     }
 }
 
 export const inc_rp = (cpu: Cpu, rp: RP) => {
     return {
-        tstates: rp === 'ix' || rp === 'iy' ? 10 : 6,
+        tstates: rp.startsWith('i') ? 10 : 6,
         execute: () => {
             cpu[rp]++;
         },
-        disassembly: `inc ${rp}`
+        disassembly: () => `inc ${rp}`
     }
 }
 
 export const dec_rp = (cpu: Cpu, rp: RP) => {
     return {
-        tstates: rp === 'ix' || rp === 'iy' ? 10 : 6,
+        tstates: rp.startsWith('i') ? 10 : 6,
         execute: () => {
             cpu[rp]--;
         },
-        disassembly: `dec ${rp}`
+        disassembly: () => `dec ${rp}`
     }
 }
 
 export const inc_r = (cpu: Cpu, r: R) => {
     return {
-        tstates: 4,
+        tstates: r.startsWith('i') ? 8 : 4,
         execute: () => {
-            cpu[r] = Alu.inc8(cpu, cpu[r]);
+            cpu[r] = alu.inc8(cpu, cpu[r]);
         },
-        disassembly: `inc ${r}`
+        disassembly: () => `inc ${r}`
     }
 }
 
 export const dec_r = (cpu: Cpu, r: R) => {
     return {
-        tstates: 4,
+        tstates: r.startsWith('i') ? 8 : 4,
         execute: () => {
-            cpu[r] = Alu.dec8(cpu, cpu[r])
+            cpu[r] = alu.dec8(cpu, cpu[r])
         },
-        disassembly: `dec ${r}`
+        disassembly: () => `dec ${r}`
     }
 }
 
 export const ld_r_n = (cpu: Cpu, r: R, n: number) => {
     return {
-        tstates: 7,
+        tstates: r.startsWith('i') ? 11 : 7,
         execute: () => {
             cpu[r] = n;
         },
-        disassembly: `ld ${r}, $${toHex(n, 2)}`
+        disassembly: () => `ld ${r}, $${toHex(n, 2)}`
     }
 }
 
@@ -211,15 +206,17 @@ export const rot_a = (cpu: Cpu, rot: ROT) => {
         execute: () => {
             cpu.a = rot(cpu, cpu.a);
         },
-        disassembly: `${rot.fname}a`
+        disassembly: () => `${rot.iname}a`
     }
 }
 
 export const daa = (cpu: Cpu) => {
     return {
         tstates: 4,
-        execute: () => Alu.daa(cpu),
-        disassembly: 'daa'
+        execute: () => {
+            alu.daa(cpu)
+        },
+        disassembly: () => 'daa'
     }
 }
 
@@ -231,7 +228,7 @@ export const cpl = (cpu: Cpu) => {
             cpu.flags.h = true;
             cpu.flags.n = true;
         },
-        disassembly: 'cpl'
+        disassembly: () => 'cpl'
     }
 }
 
@@ -243,7 +240,7 @@ export const scf = (cpu: Cpu) => {
             cpu.flags.h = false;
             cpu.flags.n = false;
         },
-        disassembly: 'scf'
+        disassembly: () => 'scf'
     }
 }
 
@@ -255,7 +252,7 @@ export const ccf = (cpu: Cpu) => {
             cpu.flags.h = cpu.flags.c;
             cpu.flags.n = false;
         },
-        disassembly: 'ccf'
+        disassembly: () => 'ccf'
     }
 }
 
@@ -265,107 +262,86 @@ export const halt = (cpu: Cpu) => {
         execute: () => {
             cpu.halted = true;
         },
-        disassembly: 'halt'
+        disassembly: () => 'halt'
     }
 }
 
 export const ld_r_r = (cpu: Cpu, dst: R, src: R) => {
     return {
-        tstates: (dst === '(hl)' || src === '(hl)') ? 7 : 4,
+        tstates: (dst === '(hl)' || src === '(hl)') ? 7 
+                : dst.startsWith('i') || src.startsWith('i') ? 8 : 4,
         execute: () => {
             cpu[dst] = cpu[src];
         },
-        disassembly: `ld ${dst}, ${src}`
+        disassembly: () => `ld ${dst}, ${src}`
     }
 }
 
-
-export const idx_inc_r = (cpu: Cpu, dst: R, d?: number) => {
+export const inc_idx = (cpu: Cpu, dst: 'ix' | 'iy', d: number) => {
     return {
-        tstates: d ? 23 : 8,
+        tstates: 23,
         execute: () => {
-            if (d) {
-                cpu.memory.write8(cpu[dst] + d, Alu.inc8(cpu, cpu.memory.read8(cpu[dst] + d)));
-            }
-            else {
-                cpu[dst] = Alu.inc8(cpu, cpu[dst]); 
-            }
+            cpu.bus.write8(cpu[dst] + d, alu.inc8(cpu, cpu.bus.read8(cpu[dst] + d)));
         },
-        disassembly: d ? `inc (${dst} + ${d})`: `inc ${dst}`
+        disassembly: () => `inc (${dst} + ${d})`
     }
 }
 
-export const idx_dec_r = (cpu: Cpu, dst: R, d?: number) => {
+export const dec_idx = (cpu: Cpu, dst: 'ix' | 'iy', d: number) => {
     return {
-        tstates: d ? 23 : 8,
+        tstates: 23,
         execute: () => {
-            if (d) {
-                cpu.memory.write8(cpu[dst] + d, Alu.dec8(cpu, cpu.memory.read8(cpu[dst] + d)));
-            }
-            else {
-                cpu[dst] = Alu.dec8(cpu, cpu[dst]); 
-            }
+            cpu.bus.write8(cpu[dst] + d, alu.dec8(cpu, cpu.bus.read8(cpu[dst] + d)));
         },
-        disassembly: d ? `dec (${dst} + ${d})`: `dec ${dst}`
+        disassembly: () => `dec (${dst} + ${d})`
     }
 }
 
-
-export const idx_ld_r_n = (cpu: Cpu, dst: R, n: number, d?: number) => {
+export const ld_idx_n = (cpu: Cpu, dst: 'ix' | 'iy', n: number, d: number) => {
     return {
-        tstates: d ? 19 : 11,
+        tstates: 19,
         execute: () => {
-            if(d) cpu.memory.write8(cpu[dst] + d, n);
-            else cpu[dst] = n;
+            cpu.bus.write8(cpu[dst] + d, n);
         },
-        disassembly: d ? `ld (${dst} + ${d}), ${n}`: `ld ${dst}, ${n}`
+        disassembly: () => `ld (${dst} + ${d}), ${n}`
     }
 }
 
-export const idx_ld_r_r = (cpu: Cpu, dst: R, src: R, d?: number) => {
+export const idx_ld_r_r = (cpu: Cpu, dst: R | 'ix' | 'iy', src: R | 'ix' | 'iy', d: number) => {
     let disassembly = '';
-    if (d) {
-        if (src === 'ix' || src == 'iy') {
-            disassembly = `ld ${dst}, (${src} + ${toHex(d, 2)})`;
-        }
-        else disassembly = `ld (${dst} + ${toHex(d, 2)}), ${src}`;
-    }
-    else disassembly = `ld ${dst}, ${src}`;
+    if (src.startsWith('i')) disassembly = `ld ${dst}, (${src} + ${toHex(d, 2)})`;
+    else disassembly = `ld (${dst} + ${toHex(d, 2)}), ${src}`;
     return {
-        tstates: d ? 19 : 8,
+        tstates: 19,
         execute: () => {
-            if (d) {
-                if (src === 'ix' || src === 'iy') {
-                    cpu[dst] = cpu.memory.read8(cpu[src] + d);
-                }
-                else {
-                    cpu.memory.write8(cpu[dst] + d, cpu[src]);
-                }
+            if (src.startsWith('i')) {
+                cpu[dst] = cpu.bus.read8(cpu[src] + d);
             }
             else {
-                cpu[dst] = cpu[src];
+                cpu.bus.write8(cpu[dst] + d, cpu[src]);
             }
         },
-        disassembly: disassembly
+        disassembly: () => disassembly
     }
 }
 
-export const idx_alu_r = (cpu: Cpu, alu: ALU, r: R, d?: number) => {
+export const alu_idx = (cpu: Cpu, alu: ALU, idx: 'ix' | 'iy', d: number) => {
     return {
-        tstates: d ? 19 : 8,
+        tstates: 19,
         execute: () => {
-            if (d) alu(cpu, cpu.memory.read8(cpu[r] + d));
-            else alu(cpu, cpu[r]);
+            alu(cpu, cpu.bus.read8(cpu[idx] + d));
         },
-        disassembly: `${alu.fname} ${r}`
+        disassembly: () => `${alu.iname} ${idx}`
     }
 }
 
 export const alu_r = (cpu: Cpu, alu: ALU, r: R) => {
     return {
-        tstates: r === '(hl)' ? 7: 4,
-        execute: () => alu(cpu, cpu[r]),
-        disassembly: `${alu.fname} ${r}`
+        tstates: r === '(hl)' ? 7 : r.startsWith('i') ? 8 : 4,
+        execute: () => {
+            alu(cpu, cpu[r])
+        },
+        disassembly: () => `${alu.iname} ${r}`
     }
 }
 
@@ -377,7 +353,7 @@ export const ret_cc = (cpu: Cpu, cc: CC) => {
                 cpu.pc = cpu.pop16();
             }
         },
-        disassembly: `ret ${cc.fname}`
+        disassembly: () => `ret ${cc.iname}`
     }
 }
 
@@ -387,7 +363,7 @@ export const pop_rp = (cpu: Cpu, rp: RP) => {
         execute: () => {
             cpu[rp] = cpu.pop16();
         },
-        disassembly: `pop ${rp}`
+        disassembly: () => `pop ${rp}`
     }
 }
 
@@ -397,7 +373,7 @@ export const ret = (cpu: Cpu) => {
         execute: () => {
             cpu.pc = cpu.pop16();
         },
-        disassembly: 'ret'
+        disassembly: () => 'ret'
     }
 }
 
@@ -413,7 +389,7 @@ export const exx = (cpu: Cpu) => {
             cpu.flags = cpu.shadowFlags;
             cpu.shadowFlags = tmpFlags;
         },
-        disassembly: 'exx'
+        disassembly: () => 'exx'
     }
 }
 
@@ -423,7 +399,7 @@ export const jp_rp = (cpu: Cpu, rp: RP) => {
         execute: () => {
             cpu.pc = cpu[rp];
         },
-        disassembly: `jp ${rp}`
+        disassembly: () => `jp ${rp}`
     }
 }
 
@@ -433,7 +409,7 @@ export const ld_sp_rp = (cpu: Cpu, rp: RP) => {
         execute: () => {
             cpu.sp = cpu[rp];
         },
-        disassembly: `ld sp, ${rp}`
+        disassembly: () => `ld sp, ${rp}`
     }
 }
 
@@ -445,7 +421,7 @@ export const jp_cc_nn = (cpu: Cpu, cc: CC, nn: number) => {
                 cpu.pc = nn;
             }
         },
-        disassembly: `jp ${cc.fname}, $${toHex(nn, 4)}`
+        disassembly: () => `jp ${cc.iname}, $${toHex(nn, 4)}`
     }
 }
 
@@ -455,7 +431,7 @@ export const jp_nn = (cpu: Cpu, nn: number) => {
         execute: () => {
             cpu.pc = nn;
         },
-        disassembly: `jp $${toHex(nn, 4)}`
+        disassembly: () => `jp $${toHex(nn, 4)}`
     }
 }
 
@@ -465,7 +441,7 @@ export const rot_r = (cpu: Cpu, rot: ROT, r: R) => {
         execute: () => {
             cpu[r] = rot(cpu, cpu[r]);
         },
-        disassembly: `${rot.fname} ${r}`
+        disassembly: () => `${rot.iname} ${r}`
     }
 }
 
@@ -478,7 +454,7 @@ export const bit_y_r = (cpu: Cpu, y: number, r: R) => {
             cpu.flags.h = true;
             cpu.flags.n = false;
         },
-        disassembly: `bit $${toHex(y, 2)} ${r}`
+        disassembly: () => `bit ${y}, ${r}`
     }
 }
 
@@ -489,7 +465,7 @@ export const res_y_r = (cpu: Cpu, y: number, r: R) => {
             const mask = 1 << y;
             cpu[r] &= (~mask);
         },
-        disassembly: `res $${toHex(y, 2)} ${r}`
+        disassembly: () => `res $${toHex(y, 2)} ${r}`
     }
 }
 
@@ -499,7 +475,7 @@ export const set_y_r = (cpu: Cpu, y: number, r: R) => {
         execute: () => {
             cpu[r] |= 1 << y;
         },
-        disassembly: `set $${toHex(y, 2)} ${r}`
+        disassembly: () => `set $${toHex(y, 2)} ${r}`
     }
 }
 
@@ -507,9 +483,9 @@ export const out_n_a = (cpu: Cpu, n: number) => {
     return {
         tstates: 11,
         execute: () => {
-            cpu.memory.out(n, cpu.a);
+            cpu.bus.out(n, cpu.a);
         },
-        disassembly: `out $${toHex(n, 2)}, a`
+        disassembly: () => `out ($${toHex(n, 2)}), a`
     }
 }
 
@@ -517,9 +493,9 @@ export const in_a_n = (cpu: Cpu, n: number) => {
     return {
         tstates: 11,
         execute: () => {
-            cpu.a = cpu.memory.in(n);
+            cpu.a = cpu.bus.in(n);
         },
-        disassembly: `in a, ($${toHex(n, 2)})`
+        disassembly: () => `in a, ($${toHex(n, 2)})`
     }
 }
 
@@ -527,11 +503,11 @@ export const ex_mem_sp_rp = (cpu: Cpu, rp: RP) => {
     return {
         tstates: rp === 'ix' || rp === 'iy' ? 23: 19,
         execute: () => {
-            let tmp = cpu.memory.read16(cpu.sp);
-            cpu.memory.write16(cpu.sp, cpu[rp]);
+            let tmp = cpu.bus.read16(cpu.sp);
+            cpu.bus.write16(cpu.sp, cpu[rp]);
             cpu[rp] = tmp;
         },
-        disassembly: `ex (sp), ${rp}`
+        disassembly: () => `ex (sp), ${rp}`
     }
 }
 
@@ -543,7 +519,7 @@ export const ex_de_hl = (cpu: Cpu) => {
             cpu.de = cpu.hl;
             cpu.hl = tmpDe;
         },
-        disassembly: 'ex de, hl'
+        disassembly: () => 'ex de, hl'
     }
 }
 
@@ -554,7 +530,7 @@ export const di = (cpu: Cpu) => {
             cpu.iff1 = false;
             cpu.iff2 = false;
         },
-        disassembly: 'di'
+        disassembly: () => 'di'
     }
 }
 
@@ -564,7 +540,7 @@ export const ei = (cpu: Cpu) => {
         execute: () => {
             cpu.eiRequested = true;
     },
-        disassembly: 'ei'
+        disassembly: () => 'ei'
     }
 }
 
@@ -574,7 +550,7 @@ export const push_rp = (cpu: Cpu, rp: RP) => {
         execute: () => {
             cpu.push16(cpu[rp]);
         },
-        disassembly: `push ${rp}`
+        disassembly: () => `push ${rp}`
     }
 }
 
@@ -585,7 +561,7 @@ export const call_nn = (cpu: Cpu, nn: number) => {
             cpu.push16(cpu.pc);
             cpu.pc = nn;
         },
-        disassembly: `call $${toHex(nn, 4)}`
+        disassembly: () => `call $${toHex(nn, 4)}`
     }
 }
 
@@ -598,7 +574,7 @@ export const call_cc_nn = (cpu: Cpu, cc: CC, nn: number) => {
                 cpu.pc = nn; 
             }
         },
-        disassembly: `call ${cc.fname}, $${toHex(nn, 4)}`
+        disassembly: () => `call ${cc.iname}, $${toHex(nn, 4)}`
     }
 }
 
@@ -608,7 +584,7 @@ export const alu_n = (cpu: Cpu, alu: ALU, n: number) => {
         execute: () => {
             alu(cpu, n);
         },
-        disassembly: `${alu.fname} $${toHex(n, 2)}`
+        disassembly: () => `${alu.iname} $${toHex(n, 2)}`
     }
 }
 
@@ -619,7 +595,7 @@ export const rst = (cpu: Cpu, address: number) => {
             cpu.push16(cpu.pc);
             cpu.pc = address;
         },
-        disassembly: `RST $${toHex(address, 4)}`
+        disassembly: () => `RST $${toHex(address, 4)}`
     }
 }
 
@@ -627,9 +603,9 @@ export const in_c = (cpu: Cpu) => {
     return {
         tstates: 12,
         execute: () => {
-            Alu.io_in(cpu, cpu.c);
+            alu.io_in(cpu, cpu.c);
         },
-        disassembly: 'in (c)'
+        disassembly: () => 'in (c)'
     }
 }
 
@@ -637,9 +613,9 @@ export const in_r_c = (cpu: Cpu, r: R) => {
     return {
         tstates: 12,
         execute: () => {
-            cpu[r] = Alu.io_in(cpu, cpu.c);
+            cpu[r] = alu.io_in(cpu, cpu.c);
         },
-        disassembly: `in ${r}, (c)`
+        disassembly: () => `in ${r}, (c)`
     }
 }
 
@@ -647,9 +623,9 @@ export const out_c_0 = (cpu: Cpu) => {
     return {
         tstates: 12,
         execute: () => {
-            cpu.memory.out(cpu.c, 0);
+            cpu.bus.out(cpu.c, 0);
         },
-        disassembly: 'out (c), 0'
+        disassembly: () => 'out (c), 0'
     }
 }
 
@@ -657,9 +633,9 @@ export const out_c_r = (cpu: Cpu, r: R) => {
     return {
         tstates: 12,
         execute: () => {
-            cpu.memory.out(cpu.c, cpu[r]);
+            cpu.bus.out(cpu.c, cpu[r]);
         },
-        disassembly: `out (c), ${r}`
+        disassembly: () => `out (c), ${r}`
     }
 }
 
@@ -667,9 +643,9 @@ export const sbc_hl_rp = (cpu: Cpu, rp: RP) => {
     return {
         tstates: 15,
         execute: () => {
-            cpu.hl = Alu.sbc16(cpu, cpu.hl, cpu[rp]);
+            cpu.hl = alu.sbc16(cpu, cpu.hl, cpu[rp]);
         },
-        disassembly: `sbc hl, ${rp}`
+        disassembly: () => `sbc hl, ${rp}`
     }
 }
 
@@ -677,29 +653,29 @@ export const adc_hl_rp = (cpu: Cpu, rp: RP) => {
     return {
         tstates: 15,
         execute: () => {
-            cpu.hl = Alu.adc16(cpu, cpu.hl, cpu[rp]);
+            cpu.hl = alu.adc16(cpu, cpu.hl, cpu[rp]);
         },
-        disassembly: `adc hl, ${rp}`
+        disassembly: () => `adc hl, ${rp}`
     }
 }
 
 export const ld_nn_rp = (cpu: Cpu, rp: RP, nn: number) => {
     return {
-        tstates: 20,
+        tstates: rp === 'hl' ? 16 : 20,
         execute: () => {
-            cpu.memory.write16(nn, cpu[rp]);
+            cpu.bus.write16(nn, cpu[rp]);
         },
-        disassembly: `ld ($${toHex(nn, 4)}), ${rp}`
+        disassembly: () => `ld ($${toHex(nn, 4)}), ${rp}`
     }
 }
 
 export const ld_rp_mem_nn = (cpu: Cpu, rp: RP, nn: number) => {
     return {
-        tstates: 20,
+        tstates: rp === 'hl' ? 16 : 20,
         execute: () => {
-            cpu[rp] = cpu.memory.read16(nn);
+            cpu[rp] = cpu.bus.read16(nn);
         },
-        disassembly: `ld ${rp}, ($${toHex(nn, 4)})`
+        disassembly: () => `ld ${rp}, ($${toHex(nn, 4)})`
     }
 }
 
@@ -709,7 +685,7 @@ export const neg = (cpu: Cpu) => {
         execute: () => {
             cpu.a = ~cpu.a;
         },
-        disassembly: 'neg'
+        disassembly: () => 'neg'
     }
 }
 
@@ -719,7 +695,7 @@ export const reti = (cpu: Cpu) => {
         execute: () => {
             cpu.pc = cpu.pop16();
         },
-        disassembly: 'reti'
+        disassembly: () => 'reti'
     }
 }
 
@@ -730,7 +706,7 @@ export const retn = (cpu: Cpu) => {
             cpu.pc = cpu.pop16();
             cpu.iff1 = cpu.iff2;
         },
-        disassembly: 'retn'
+        disassembly: () => 'retn'
     }
 }
 
@@ -740,7 +716,7 @@ export const im = (cpu: Cpu, imode: IMODE) => {
         execute: () => {
             cpu.interruptMode = imode;
         },
-        disassembly: imode === undefined ? 'im 0/1' : `im ${imode}`
+        disassembly: () => imode === undefined ? 'im 0/1' : `im ${imode}`
     }
 }
 
@@ -748,9 +724,9 @@ export const rot_idx = (cpu: Cpu, rot: ROT, address: number) => {
     return {
         tstates: 23,
         execute: () => {
-            cpu.memory.write8(address, rot(cpu, cpu.memory.read8(address)));
+            cpu.bus.write8(address, rot(cpu, cpu.bus.read8(address)));
        },
-        disassembly: `${rot.fname} ($${toHex(address, 4)})`
+        disassembly: () => `${rot.iname} ($${toHex(address, 4)})`
     }
 }
 
@@ -758,10 +734,10 @@ export const ld_r_rot_idx = (cpu: Cpu, rot: ROT, address: number, r: R) => {
     return {
         tstates: 23,
         execute: () => {
-            cpu.memory.write8(address, rot(cpu, cpu.memory.read8(address)));
-            cpu[r] = cpu.memory.read8(address);
+            cpu.bus.write8(address, rot(cpu, cpu.bus.read8(address)));
+            cpu[r] = cpu.bus.read8(address);
         },
-        disassembly: `${rot.fname} ($${toHex(address, 4)}), ${r}`
+        disassembly: () => `${rot.iname} ($${toHex(address, 4)}), ${r}`
     }
 }
 
@@ -770,11 +746,11 @@ export const bit_y_idx = (cpu: Cpu,  y: number, address: number) => {
         tstates: 20,
         execute: () => {
             const mask = 1 << y;
-            cpu.flags.z = !(mask & cpu.memory.read8(address));
+            cpu.flags.z = !(mask & cpu.bus.read8(address));
             cpu.flags.h = true;
             cpu.flags.n = false;
         },
-        disassembly: `bit $${toHex(y, 2)}, ($${toHex(address, 4)})`
+        disassembly: () => `bit $${toHex(y, 2)}, ($${toHex(address, 4)})`
     }
 }
 
@@ -783,10 +759,10 @@ export const res_y_idx = (cpu: Cpu,  y: number, address: number) => {
         tstates: 23,
         execute: () => {
             const m = 1 << y;
-            const result = (~m) & cpu.memory.read8(address);
-            cpu.memory.write8(address, result);
+            const result = (~m) & cpu.bus.read8(address);
+            cpu.bus.write8(address, result);
         },
-        disassembly: `res $${toHex(y, 2)}, ($${toHex(address, 4)})`
+        disassembly: () => `res $${toHex(y, 2)}, ($${toHex(address, 4)})`
     }
 }
 
@@ -795,9 +771,9 @@ export const ld_res_y_idx = (cpu: Cpu,  y: number, address: number, r: R) => {
         tstates: 23,
         execute: () => {
             res_y_idx(cpu, y, address).execute();
-            cpu[r] = cpu.memory.read8(address);
+            cpu[r] = cpu.bus.read8(address);
         },
-        disassembly: `res $${toHex(y, 2)}, ($${toHex(address, 4)}), ${r}`
+        disassembly: () => `res $${toHex(y, 2)}, ($${toHex(address, 4)}), ${r}`
     }
 }
 
@@ -806,10 +782,10 @@ export const set_y_idx = (cpu: Cpu,  y: number, address: number) => {
         tstates: 23,
         execute: () => {
             const m = 1 << y;
-            const result = m | cpu.memory.read8(address);
-            cpu.memory.write8(address, result);
+            const result = m | cpu.bus.read8(address);
+            cpu.bus.write8(address, result);
         },
-        disassembly: `set $${toHex(y, 2)}, ($${toHex(address, 4)})`
+        disassembly: () => `set $${toHex(y, 2)}, ($${toHex(address, 4)})`
     }
 }
 
@@ -818,16 +794,77 @@ export const ld_set_y_idx = (cpu: Cpu,  y: number, address: number, r: R) => {
         tstates: 23,
         execute: () => {
             set_y_idx(cpu, y, address).execute();
-            cpu[r] = cpu.memory.read8(address);
+            cpu[r] = cpu.bus.read8(address);
         },
-        disassembly: `set $${toHex(y, 2)}, ($${toHex(address, 4)}), ${r}`
+        disassembly: () => `set $${toHex(y, 2)}, ($${toHex(address, 4)}), ${r}`
     }
 }
 
 export const bl_i = (cpu: Cpu, bli: BLI) => {
     return {
-        tstates: bli.fname.endsWith('r') && cpu.b === 1 ? 21 : 16,
+        tstates: bli.iname.endsWith('r') && cpu.b === 1 ? 21 : 16,
         execute: () => { bli(cpu) },
-        disassembly: `${bli.fname}`
+        disassembly: () => `${bli.iname}`
+    }
+}
+
+export const rrd = (cpu: Cpu) => {
+    return {
+        tstates: 18,
+        execute: () => {
+            const a = cpu.a;
+            const byte = cpu.bus.read8(cpu.hl);
+            cpu.a = (byte & 0xf);
+            cpu.bus.write8(cpu.hl, ((a & 0xf) << 4) | (byte >>> 4)); 
+            cpu.flags.s = !!(cpu.a * 0x80);
+            cpu.flags.z = !cpu.a;
+            cpu.flags.h = false;
+            cpu.flags.pv = alu.parity(cpu.a);
+            cpu.flags.n = false;
+        },
+        disassembly: () => 'rrd'
+    }
+}
+
+export const rld = (cpu: Cpu) => {
+    return {
+        tstates: 18,
+        execute: () => {
+            const a = cpu.a;
+            const byte = cpu.bus.read8(cpu.hl);
+            cpu.a = byte >>> 4;
+            cpu.bus.write8(cpu.hl, (byte << 4) | (a & 0xf));
+            cpu.flags.s = !!(cpu.a * 0x80);
+            cpu.flags.z = !cpu.a;
+            cpu.flags.h = false;
+            cpu.flags.pv = alu.parity(cpu.a);
+            cpu.flags.n = false;
+        },
+        disassembly: () => 'rld'
+    }
+}
+
+export const ld_a_i = (cpu: Cpu) => {
+    return {
+        tstates: 9,
+        execute: () => {
+            cpu.a = cpu.i;
+            cpu.flags.s = !!(cpu.a & 0x80);
+            cpu.flags.z = !cpu.a;
+            cpu.flags.h = false;
+            cpu.flags.pv = cpu.iff2;
+            cpu.flags.n = false;
+        },
+        disassembly: () => 'ld a, i'
+    }
+}
+
+export const ld_i_a = (cpu: Cpu) => {
+    return {
+        tstates: 9,
+        execute: () => {
+            cpu.i = cpu.a;
+        },
+        disassembly: () => 'ld i, a'
     }
 }

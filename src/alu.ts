@@ -1,6 +1,6 @@
 import { Cpu } from "./cpu"
 
-const parity = (value: number): boolean => {
+export const parity = (value: number): boolean => {
     let parity = 0;
     while(value) {
         parity ^= value & 1;
@@ -75,7 +75,7 @@ export const dec8 = (cpu: Cpu, value: number) => {
 }
 
 export const io_in = (cpu: Cpu, port: number): number => {
-    const result = cpu.memory.in(port);
+    const result = cpu.bus.in(port);
     cpu.flags.s = !!(result & 0x80);
     cpu.flags.z = !(result & 0xff);
     cpu.flags.pv = parity(result);
@@ -92,7 +92,7 @@ export const rlc = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!msb;
     return result;
 }
-rlc.fname = 'rlc';
+rlc.iname = 'rlc';
 
 export const rrc = (cpu: Cpu, value: number) => {
     const lsb = value & 1;
@@ -102,7 +102,7 @@ export const rrc = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!lsb;
     return result;
 }
-rrc.fname = 'rrc';
+rrc.iname = 'rrc';
 
 
 export const rl = (cpu: Cpu, value: number) => {
@@ -113,7 +113,7 @@ export const rl = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!msb;
     return result;
 }
-rl.fname = 'rl';
+rl.iname = 'rl';
 
 export const rr = (cpu: Cpu, value: number) => {
     const lsb = value & 1;
@@ -123,7 +123,7 @@ export const rr = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!lsb;
     return result;
 }
-rr.fname = 'rr';
+rr.iname = 'rr';
 
 export const sla = (cpu: Cpu, value: number) => {
     const msb = value >>> 7;
@@ -136,7 +136,7 @@ export const sla = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!msb;
     return result;
 }
-sla.fname = 'sla';
+sla.iname = 'sla';
 
 export const sra = (cpu: Cpu, value: number) => {
     const lsb = value & 1;
@@ -149,7 +149,7 @@ export const sra = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!lsb;
     return result;
 }
-sra.fname = 'sra';
+sra.iname = 'sra';
 
 export const sll = (cpu: Cpu, value: number) => {
     const msb = value >>> 7;
@@ -162,7 +162,7 @@ export const sll = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!msb;
     return result;
 }
-sll.fname = 'sll';
+sll.iname = 'sll';
 
 export const srl = (cpu: Cpu, value: number) => {
     const lsb = value & 1;
@@ -175,10 +175,10 @@ export const srl = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!lsb;
     return result;
 }
-srl.fname = 'srl';
+srl.iname = 'srl';
 
 export const ldi = (cpu: Cpu) => {
-    cpu.memory.write16(cpu.de, cpu.memory.read16(cpu.hl));
+    cpu.bus.write8(cpu.de, cpu.bus.read8(cpu.hl));
     cpu.de++;
     cpu.hl++;
     cpu.bc--;
@@ -186,10 +186,10 @@ export const ldi = (cpu: Cpu) => {
     cpu.flags.pv = cpu.bc == 0;
     cpu.flags.n = false;
 }
-ldi.fname = 'ldi';
+ldi.iname = 'ldi';
 
 export const ldd = (cpu: Cpu) => {
-    cpu.memory.write16(cpu.de, cpu.memory.read16(cpu.hl));
+    cpu.bus.write8(cpu.de, cpu.bus.read8(cpu.hl));
     cpu.de--;
     cpu.hl--;
     cpu.bc--;
@@ -197,10 +197,10 @@ export const ldd = (cpu: Cpu) => {
     cpu.flags.pv = cpu.bc == 0;
     cpu.flags.n = false;
 }
-ldd.fname = 'ldd';
+ldd.iname = 'ldd';
 
 export const ldir = (cpu: Cpu) => {
-    cpu.memory.write16(cpu.de, cpu.memory.read16(cpu.hl));
+    cpu.bus.write8(cpu.de, cpu.bus.read8(cpu.hl));
     cpu.de++;
     cpu.hl++;
     cpu.bc--;
@@ -213,10 +213,10 @@ export const ldir = (cpu: Cpu) => {
     } 
     return true;
 }
-ldir.fname = 'ldir';
+ldir.iname = 'ldir';
 
 export const lddr = (cpu: Cpu) => {
-    cpu.memory.write16(cpu.de, cpu.memory.read16(cpu.hl));
+    cpu.bus.write8(cpu.de, cpu.bus.read8(cpu.hl));
     cpu.de--;
     cpu.hl--;
     cpu.bc--;
@@ -229,31 +229,31 @@ export const lddr = (cpu: Cpu) => {
     } 
     return true;
 }
-lddr.fname = 'lddr';
+lddr.iname = 'lddr';
 
 export const cpi = (cpu: Cpu) => {
     const tmp = cpu.flags.c;
-    cpAcc(cpu, cpu.memory.read8(cpu.hl));
+    cpAcc(cpu, cpu.bus.read8(cpu.hl));
     cpu.hl++;
     cpu.bc--;
     cpu.flags.pv = cpu.bc == 0;
     cpu.flags.c = tmp;
 }
-cpi.fname = 'cpi';
+cpi.iname = 'cpi';
 
 export const cpd = (cpu: Cpu) => {
     const tmp = cpu.flags.c;
-    cpAcc(cpu, cpu.memory.read8(cpu.hl));
+    cpAcc(cpu, cpu.bus.read8(cpu.hl));
     cpu.hl--;
     cpu.bc--;
     cpu.flags.pv = cpu.bc == 0;
     cpu.flags.c = tmp;
 }
-cpd.fname = 'cpd'
+cpd.iname = 'cpd'
 
 export const cpir = (cpu: Cpu) => {
     const tmp = cpu.flags.c;
-    cpAcc(cpu, cpu.memory.read8(cpu.hl));
+    cpAcc(cpu, cpu.bus.read8(cpu.hl));
     cpu.hl++;
     cpu.bc--;
     cpu.flags.pv = cpu.bc != 0;
@@ -264,11 +264,11 @@ export const cpir = (cpu: Cpu) => {
     cpu.pc -= 2;
     return false;
 }
-cpir.fname = 'cpir';
+cpir.iname = 'cpir';
 
 export const cpdr = (cpu: Cpu) => {
     const tmp = cpu.flags.c;
-    cpAcc(cpu, cpu.memory.read8(cpu.hl));
+    cpAcc(cpu, cpu.bus.read8(cpu.hl));
     cpu.hl++;
     cpu.bc--;
     cpu.flags.pv = cpu.bc != 0;
@@ -279,29 +279,28 @@ export const cpdr = (cpu: Cpu) => {
     cpu.pc -= 2;
     return false;
 }
-cpdr.fname = 'cpdr'
+cpdr.iname = 'cpdr'
 
 export const ini = (cpu: Cpu) => {
-    cpu.memory.write8(cpu.hl, cpu.memory.in(cpu.c));
+    cpu.bus.write8(cpu.hl, cpu.bus.in(cpu.c));
     cpu.hl++;
     cpu.b--;
     cpu.flags.z = cpu.b == 0;
     cpu.flags.n = true;
 }
-ini.fname = 'ini';
+ini.iname = 'ini';
 
 export const ind = (cpu: Cpu) => {
-    cpu.memory.write8(cpu.hl, cpu.memory.in(cpu.c));
+    cpu.bus.write8(cpu.hl, cpu.bus.in(cpu.c));
     cpu.hl--;
     cpu.b--;
     cpu.flags.z = cpu.b == 0;
     cpu.flags.n = true;
 }
-ind.fname = 'ind';
-
+ind.iname = 'ind';
 
 export const inir = (cpu: Cpu) => {
-    cpu.memory.write8(cpu.hl, cpu.memory.in(cpu.c));
+    cpu.bus.write8(cpu.hl, cpu.bus.in(cpu.c));
     cpu.hl++;
     cpu.b--;
     cpu.flags.z = true;
@@ -312,10 +311,10 @@ export const inir = (cpu: Cpu) => {
     cpu.pc -= 2;
     return false;
 }
-inir.fname = 'inir';
+inir.iname = 'inir';
 
 export const indr = (cpu: Cpu) => {
-    cpu.memory.write8(cpu.hl, cpu.memory.in(cpu.c));
+    cpu.bus.write8(cpu.hl, cpu.bus.in(cpu.c));
     cpu.hl--;
     cpu.b--;
     cpu.flags.z = true;
@@ -326,28 +325,28 @@ export const indr = (cpu: Cpu) => {
     cpu.pc -= 2;
     return false;
 }
-indr.fname = 'indr';
+indr.iname = 'indr';
 
 export const outi = (cpu: Cpu) => {
-    cpu.memory.out(cpu.c, cpu.memory.read8(cpu.hl));
+    cpu.bus.out(cpu.c, cpu.bus.read8(cpu.hl));
     cpu.hl++;
     cpu.b--;
     cpu.flags.z = cpu.b == 0;
     cpu.flags.n = true;
 }
-outi.fname = 'outi';
+outi.iname = 'outi';
 
 export const outd = (cpu: Cpu) => {
-    cpu.memory.out(cpu.c, cpu.memory.read8(cpu.hl));
+    cpu.bus.out(cpu.c, cpu.bus.read8(cpu.hl));
     cpu.hl--;
     cpu.b--;
     cpu.flags.z = cpu.b == 0;
     cpu.flags.n = true;
 }
-outd.fname = 'outd';
+outd.iname = 'outd';
 
 export const otir = (cpu: Cpu) => {
-    cpu.memory.out(cpu.c, cpu.memory.read8(cpu.hl));
+    cpu.bus.out(cpu.c, cpu.bus.read8(cpu.hl));
     cpu.hl++;
     cpu.b--;
     cpu.flags.z = true;
@@ -358,10 +357,10 @@ export const otir = (cpu: Cpu) => {
     cpu.pc -= 2;
     return false;
 }
-otir.fname = 'otir';
+otir.iname = 'otir';
 
 export const otdr = (cpu: Cpu) => {
-    cpu.memory.out(cpu.c, cpu.memory.read8(cpu.hl));
+    cpu.bus.out(cpu.c, cpu.bus.read8(cpu.hl));
     cpu.hl--;
     cpu.b--;
     cpu.flags.z = true;
@@ -372,7 +371,7 @@ export const otdr = (cpu: Cpu) => {
     cpu.pc -= 2;
     return false;
 }
-otdr.fname = 'otdr';
+otdr.iname = 'otdr';
 
 export const addAcc = (cpu: Cpu, value: number) => {
     const result = cpu.a + value;
@@ -385,12 +384,12 @@ export const addAcc = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!(result & 0x100);
     cpu.a = result;
 }
-addAcc.fname = 'add';
+addAcc.iname = 'add';
 
 export const adcAcc = (cpu: Cpu, value: number) => {
     addAcc(cpu, value + +cpu.flags.c);
 }
-adcAcc.fname = 'adc';
+adcAcc.iname = 'adc';
 
 export const subAcc = (cpu: Cpu, value: number) => {
     const a = cpu.a;
@@ -404,12 +403,12 @@ export const subAcc = (cpu: Cpu, value: number) => {
     cpu.flags.c = !!(result & 0x100);
     cpu.a = result;
 }
-subAcc.fname = 'sub';
+subAcc.iname = 'sub';
 
 export const sbcAcc = (cpu: Cpu, value: number) => {
     subAcc(cpu, value + +cpu.flags.c);
 }
-sbcAcc.fname = 'sbc';
+sbcAcc.iname = 'sbc';
 
 export const andAcc = (cpu: Cpu, value: number) => {
     const result = cpu.a & value;
@@ -421,7 +420,7 @@ export const andAcc = (cpu: Cpu, value: number) => {
     cpu.flags.c = false;
     cpu.a = result;
 }
-andAcc.fname = 'and';
+andAcc.iname = 'and';
 
 export const xorAcc = (cpu: Cpu, value: number) => {
     const result = cpu.a ^ value;
@@ -433,7 +432,7 @@ export const xorAcc = (cpu: Cpu, value: number) => {
     cpu.flags.c = false;
     cpu.a = result;
 }
-xorAcc.fname = 'xor';
+xorAcc.iname = 'xor';
 
 export const orAcc = (cpu: Cpu, value: number) => {
     const result = cpu.a | value;
@@ -445,12 +444,11 @@ export const orAcc = (cpu: Cpu, value: number) => {
     cpu.flags.c = false;
     cpu.a = result;
 }
-orAcc.fname = 'or';
+orAcc.iname = 'or';
 
 export const cpAcc = (cpu: Cpu, value: number) => {
     const tmp = cpu.a;
     subAcc(cpu, value);
     cpu.a = tmp;
 }
-cpAcc.fname = 'cp';
-
+cpAcc.iname = 'cp';

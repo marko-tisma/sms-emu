@@ -1,6 +1,7 @@
 import { Cartridge } from "./cartridge"
+import { Vdp } from "./vdp";
 
-export class Memory {
+export class Bus {
 
     private readonly MEM_SIZE = 2 ** 16;
     private readonly RAM_SIZE = 2 ** 13;
@@ -24,18 +25,14 @@ export class Memory {
     private ram = new Uint8Array(this.RAM_SIZE);
     private ports = new Uint8Array(256);
 
-    private framePages = new Array<number>(3);
+    private framePages = [0, 1, 2];
 
-    private isFrame2Ram = false;
+    private ramInFrame2 = false;
     private frame2RamPage = 0;
 
-    private columnsConsole = 0;
+    vdp = new Vdp();
 
-    constructor(private cartridge: Cartridge) {
-        this.framePages[0] = 0;
-        this.framePages[1] = 1;
-        this.framePages[2] = 2;
-    }
+    constructor(private cartridge: Cartridge) {}
     
     read8(address: number): number {
         // First 1KB is always from page 0
@@ -46,7 +43,7 @@ export class Memory {
             // Reading from cartridge ROM, need to determine what pages are currently mapped
             const frame = Math.floor(address / this.PAGE_SIZE);
             address -= frame * this.PAGE_SIZE;
-            if (frame == 2 && this.isFrame2Ram) {
+            if (frame == 2 && this.ramInFrame2) {
                 return this.cartridge.ram[this.frame2RamPage * this.PAGE_SIZE + address];
             }
             const page = this.framePages[frame];
@@ -67,7 +64,7 @@ export class Memory {
     write8(address: number, value: number): void {
         // Can write to ROM area only if cartridge RAM is mapped to frame 2
         if (address < this.RAM_OFFSET) {
-            if (this.isFrame2Ram && this.FRAME_2_OFFSET <= address) {
+            if (this.ramInFrame2 && this.FRAME_2_OFFSET <= address) {
                 address -= this.FRAME_2_OFFSET;
                 this.cartridge.ram[this.frame2RamPage * this.PAGE_SIZE + address] = value;
             }
@@ -79,7 +76,7 @@ export class Memory {
             this.ram[address - this.RAM_MIRROR_OFFSET] = value;
         }
         else if (address === this.FRAME_2_CB) {
-            this.isFrame2Ram = (value & 0x08) > 0;
+            this.ramInFrame2 = (value & 0x08) > 0;
             this.frame2RamPage = (value & 0x04) >>> 2; 
         }
         else if (address < this.MEM_SIZE) {
@@ -106,10 +103,23 @@ export class Memory {
 
     in(port: number) {
         port &= 0xff;
+        if (port >>> 6 === 1) {
+            if (port & 1) return this.vdp.hCounter;
+            else return this.vdp.vCounter;
+        }
+        if (port >>> 6 === 2) {
+            if (port & 1) return this.vdp.readControlPort();
+            return this.vdp.readDataPort();
+        }
         return this.ports[port];
     }
 
     out(port: number, value: number) {
+        port &= 0xff;
+        if (port >>> 6 === 2) {
+            if (port & 1) this.vdp.writeControlPort(value);
+            else this.vdp.writeDataPort(value);
+        }
         this.ports[port] = value;
     }
 }
