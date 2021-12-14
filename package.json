@@ -1,29 +1,13 @@
 {
   "name": "sms-emu",
-  "version": "1.0.0",
-  "description": "Sega Master System emulator",
-  "main": "dist/index.js",
+  "version": "0.0.0",
   "scripts": {
-    "start": "tsc && node dist/index.js",
-    "build": "webpack --mode development",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "serve": "vite preview"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/marko-tisma/sms-emu.git"
-  },
-  "author": "",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/marko-tisma/sms-emu/issues"
-  },
-  "homepage": "https://github.com/marko-tisma/sms-emu#readme",
   "devDependencies": {
-    "ts-loader": "^9.2.6",
-    "ts-node": "^10.4.0",
-    "typescript": "^4.4.4",
-    "webpack": "^5.64.2",
-    "webpack-cli": "^4.9.1"
-  },
-  "type": "module"
+    "typescript": "^4.3.2",
+    "vite": "^2.6.4"
+  }
 }
