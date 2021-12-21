@@ -30,9 +30,7 @@ export class Bus {
     private ramInFrame2 = false;
     private frame2RamPage = 0;
 
-    vdp = new Vdp();
-
-    constructor(private cartridge: Cartridge) {}
+    constructor(private cartridge: Cartridge, public vdp: Vdp) {}
     
     read8(address: number): number {
         // First 1KB is always from page 0
@@ -43,7 +41,7 @@ export class Bus {
             // Reading from cartridge ROM, need to determine what pages are currently mapped
             const frame = Math.floor(address / this.PAGE_SIZE);
             address -= frame * this.PAGE_SIZE;
-            if (frame == 2 && this.ramInFrame2) {
+            if (frame === 2 && this.ramInFrame2) {
                 return this.cartridge.ram[this.frame2RamPage * this.PAGE_SIZE + address];
             }
             const page = this.framePages[frame];

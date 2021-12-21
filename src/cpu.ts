@@ -1,6 +1,7 @@
 import { Bus } from "./bus";
 import { decode, IMODE } from "./decoder";
 import { Register } from "./register";
+import { toSigned } from "./util";
 
 export enum RegisterName {
     B, C, D, E, H, L, F, A
@@ -23,7 +24,6 @@ export class Cpu {
 
     private _i = new Register(1);
 
-    // Flags
     flags: {[key: string]: boolean} = {
         s: false,
         z: false,
@@ -63,10 +63,9 @@ export class Cpu {
     constructor(public bus: Bus) {
         this.registers = Array.from({length: 8}, () => new Register(1));
         this.shadowRegisters = Array.from({length: 8}, () => new Register(1));
-        this.sp = 0xdff0;
+        // this.sp = 0xdff0;
     }
 
-    // Returns the number of TSTATES this instruction took
     run(op: number): number {
         this.handleInterrupts();
         if (this.halted) return 4;
@@ -124,8 +123,7 @@ export class Cpu {
 
     next8Signed(): number {
         let byte = this.bus.read8(this.pc++);
-        byte = (byte << 24) >> 24;
-        return byte;
+        return toSigned(byte);
     }
 
     next16(): number {
@@ -137,6 +135,14 @@ export class Cpu {
     get i(): number { return this._i.value; }
 
     set i(value: number) { this._i.value = value; }
+
+    get ['(ix + d)'] (): number { return this.bus.read8(this.ix + this.next8Signed()) }
+
+    set ['(ix + d)'] (value: number) { this.bus.write8(this.ix + this.next8Signed(), value) }
+
+    get ['(iy + d)'] (): number { return this.bus.read8(this.iy + this.next8Signed()) }
+
+    set ['(iy + d)'] (value: number) { this.bus.write8(this.iy + this.next8Signed(), value) }
 
     get ['(ix)'] (): number { return this.bus.read8(this.ix) }
 

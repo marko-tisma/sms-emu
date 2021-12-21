@@ -24,7 +24,7 @@ export const nop = () => {
 
 export const noni = (cpu: Cpu) => {
     return {
-        tstates: 4,
+        tstates: 8,
         execute: () => {
             cpu.iff1 = false;
             cpu.iff2 = false;
@@ -92,7 +92,7 @@ export const jr_cc = (cpu: Cpu, cc: CC, d: number) => {
 
 export const ld_rp_nn = (cpu: Cpu, rp: RP, nn: number) => {
     return {
-        tstates: rp === 'ix' || rp === 'iy' ? 14 : 10,
+        tstates: 10,
         execute: () => {
             cpu[rp] = nn;
         },
@@ -102,7 +102,7 @@ export const ld_rp_nn = (cpu: Cpu, rp: RP, nn: number) => {
 
 export const add_rp_rp = (cpu: Cpu, dst: RP, src: RP) => {
     return {
-        tstates: dst === 'ix' || dst === 'iy' ? 15 : 11,
+        tstates: 11,
         execute: () => {
             cpu[dst] = alu.add16(cpu, cpu[dst], cpu[src]);
         },
@@ -110,33 +110,33 @@ export const add_rp_rp = (cpu: Cpu, dst: RP, src: RP) => {
     }
 }
 
-export const ld_mem_a = (cpu: Cpu, dst: RP) => {
+export const ld_mem_rp_a = (cpu: Cpu, rp: RP) => {
     return {
         tstates: 7,
         execute: () => {
-            cpu.bus.write8(cpu[dst], cpu.a);
+            cpu.bus.write8(cpu[rp], cpu.a);
         },
-        disassembly: () => `ld (${dst}), a`
+        disassembly: () => `ld (${rp}), a`
     }
 }
 
-export const ld_nn_r = (cpu: Cpu, src: R, nn: number) => {
+export const ld_mem_nn_r = (cpu: Cpu, r: R, nn: number) => {
     return {
         tstates: 13,
         execute: () => {
-            cpu.bus.write8(nn, cpu[src]);
+            cpu.bus.write8(nn, cpu[r]);
         },
-        disassembly: () => `ld ($${toHex(nn, 4)}), ${src}`
+        disassembly: () => `ld ($${toHex(nn, 4)}), ${r}`
     }
 }
 
-export const ld_a_mem = (cpu: Cpu, src: R) => {
+export const ld_a_mem_rp = (cpu: Cpu, r: R) => {
     return {
         tstates: 7,
         execute: () => {
-            cpu.a = cpu.bus.read8(cpu[src]);
+            cpu.a = cpu.bus.read8(cpu[r]);
         },
-        disassembly: () => `ld a, (${src})`
+        disassembly: () => `ld a, (${r})`
     }
 }
 
@@ -152,7 +152,7 @@ export const ld_a_mem_nn = (cpu: Cpu, nn: number) => {
 
 export const inc_rp = (cpu: Cpu, rp: RP) => {
     return {
-        tstates: rp.startsWith('i') ? 10 : 6,
+        tstates: 6,
         execute: () => {
             cpu[rp]++;
         },
@@ -162,7 +162,7 @@ export const inc_rp = (cpu: Cpu, rp: RP) => {
 
 export const dec_rp = (cpu: Cpu, rp: RP) => {
     return {
-        tstates: rp.startsWith('i') ? 10 : 6,
+        tstates: 6,
         execute: () => {
             cpu[rp]--;
         },
@@ -172,7 +172,7 @@ export const dec_rp = (cpu: Cpu, rp: RP) => {
 
 export const inc_r = (cpu: Cpu, r: R) => {
     return {
-        tstates: r.startsWith('i') ? 8 : 4,
+        tstates: 4,
         execute: () => {
             cpu[r] = alu.inc8(cpu, cpu[r]);
         },
@@ -180,9 +180,31 @@ export const inc_r = (cpu: Cpu, r: R) => {
     }
 }
 
+export const inc_idx = (cpu: Cpu, idx: 'ix' | 'iy', d: number) => {
+    return {
+        tstates: 23,
+        execute: () => {
+            const byte = cpu.bus.read8(cpu[idx] + d);
+            cpu.bus.write8(cpu[idx] + d, alu.inc8(cpu, byte));
+        },
+        disassembly: () => `inc (${idx} + ${d})`
+    }
+}
+
+export const dec_idx = (cpu: Cpu, idx: 'ix' | 'iy', d: number) => {
+    return {
+        tstates: 23,
+        execute: () => {
+            const byte = cpu.bus.read8(cpu[idx] + d);
+            cpu.bus.write8(cpu[idx] + d, alu.dec8(cpu, byte));
+        },
+        disassembly: () => `inc (${idx} + ${d})`
+    }
+}
+
 export const dec_r = (cpu: Cpu, r: R) => {
     return {
-        tstates: r.startsWith('i') ? 8 : 4,
+        tstates: 4,
         execute: () => {
             cpu[r] = alu.dec8(cpu, cpu[r])
         },
@@ -192,7 +214,7 @@ export const dec_r = (cpu: Cpu, r: R) => {
 
 export const ld_r_n = (cpu: Cpu, r: R, n: number) => {
     return {
-        tstates: r.startsWith('i') ? 11 : 7,
+        tstates: 7,
         execute: () => {
             cpu[r] = n;
         },
@@ -204,7 +226,11 @@ export const rot_a = (cpu: Cpu, rot: ROT) => {
     return {
         tstates: 4,
         execute: () => {
+            const [z, s, pv] = [cpu.flags.z, cpu.flags.s, cpu.flags.pv];
             cpu.a = rot(cpu, cpu.a);
+            cpu.flags.z = z;
+            cpu.flags.s = s;
+            cpu.flags.pv = pv;
         },
         disassembly: () => `${rot.iname}a`
     }
@@ -248,8 +274,8 @@ export const ccf = (cpu: Cpu) => {
     return {
         tstates: 4,
         execute: () => {
-            cpu.flags.c = !cpu.flags.c;
             cpu.flags.h = cpu.flags.c;
+            cpu.flags.c = !cpu.flags.c;
             cpu.flags.n = false;
         },
         disassembly: () => 'ccf'
@@ -268,8 +294,7 @@ export const halt = (cpu: Cpu) => {
 
 export const ld_r_r = (cpu: Cpu, dst: R, src: R) => {
     return {
-        tstates: (dst === '(hl)' || src === '(hl)') ? 7 
-                : dst.startsWith('i') || src.startsWith('i') ? 8 : 4,
+        tstates: (dst.startsWith('(') || src.startsWith('(')) ? 7 : 4,
         execute: () => {
             cpu[dst] = cpu[src];
         },
@@ -277,67 +302,19 @@ export const ld_r_r = (cpu: Cpu, dst: R, src: R) => {
     }
 }
 
-export const inc_idx = (cpu: Cpu, dst: 'ix' | 'iy', d: number) => {
-    return {
-        tstates: 23,
-        execute: () => {
-            cpu.bus.write8(cpu[dst] + d, alu.inc8(cpu, cpu.bus.read8(cpu[dst] + d)));
-        },
-        disassembly: () => `inc (${dst} + ${d})`
-    }
-}
-
-export const dec_idx = (cpu: Cpu, dst: 'ix' | 'iy', d: number) => {
-    return {
-        tstates: 23,
-        execute: () => {
-            cpu.bus.write8(cpu[dst] + d, alu.dec8(cpu, cpu.bus.read8(cpu[dst] + d)));
-        },
-        disassembly: () => `dec (${dst} + ${d})`
-    }
-}
-
-export const ld_idx_n = (cpu: Cpu, dst: 'ix' | 'iy', n: number, d: number) => {
+export const ld_idx_n = (cpu: Cpu, idx: 'ix' | 'iy', n: number, d: number) => {
     return {
         tstates: 19,
         execute: () => {
-            cpu.bus.write8(cpu[dst] + d, n);
+            cpu.bus.write8(cpu[idx] + d, n);
         },
-        disassembly: () => `ld (${dst} + ${d}), ${n}`
-    }
-}
-
-export const idx_ld_r_r = (cpu: Cpu, dst: R | 'ix' | 'iy', src: R | 'ix' | 'iy', d: number) => {
-    let disassembly = '';
-    if (src.startsWith('i')) disassembly = `ld ${dst}, (${src} + ${toHex(d, 2)})`;
-    else disassembly = `ld (${dst} + ${toHex(d, 2)}), ${src}`;
-    return {
-        tstates: 19,
-        execute: () => {
-            if (src.startsWith('i')) {
-                cpu[dst] = cpu.bus.read8(cpu[src] + d);
-            }
-            else {
-                cpu.bus.write8(cpu[dst] + d, cpu[src]);
-            }
-        },
-        disassembly: () => disassembly
-    }
-}
-
-export const alu_idx = (cpu: Cpu, alu: ALU, idx: 'ix' | 'iy', d: number) => {
-    return {
-        tstates: 19,
-        execute: () => {
-            alu(cpu, cpu.bus.read8(cpu[idx] + d));
-        },
-        disassembly: () => `${alu.iname} ${idx}`
+        disassembly: () => `ld (${idx} + ${d}), ${n}`
     }
 }
 
 export const alu_r = (cpu: Cpu, alu: ALU, r: R) => {
     return {
-        tstates: r === '(hl)' ? 7 : r.startsWith('i') ? 8 : 4,
+        tstates: r === '(hl)' ? 7 : 4,
         execute: () => {
             alu(cpu, cpu[r])
         },
@@ -359,7 +336,7 @@ export const ret_cc = (cpu: Cpu, cc: CC) => {
 
 export const pop_rp = (cpu: Cpu, rp: RP) => {
     return {
-        tstates: rp === 'ix' || rp === 'iy' ? 14 : 10,
+        tstates: 10,
         execute: () => {
             cpu[rp] = cpu.pop16();
         },
@@ -385,9 +362,9 @@ export const exx = (cpu: Cpu) => {
             cpu.registers = cpu.shadowRegisters;
             cpu.shadowRegisters = tmp;
 
-            const tmpFlags = cpu.flags;
-            cpu.flags = cpu.shadowFlags;
-            cpu.shadowFlags = tmpFlags;
+            const tmpA = cpu.registers[RegisterName.A];
+            cpu.registers[RegisterName.A] = cpu.shadowRegisters[RegisterName.A];
+            cpu.shadowRegisters[RegisterName.A] = tmpA;
         },
         disassembly: () => 'exx'
     }
@@ -395,7 +372,7 @@ export const exx = (cpu: Cpu) => {
 
 export const jp_rp = (cpu: Cpu, rp: RP) => {
     return {
-        tstates: rp === 'ix' || rp === 'iy' ? 8 : 4,
+        tstates: 4,
         execute: () => {
             cpu.pc = cpu[rp];
         },
@@ -405,7 +382,7 @@ export const jp_rp = (cpu: Cpu, rp: RP) => {
 
 export const ld_sp_rp = (cpu: Cpu, rp: RP) => {
     return {
-        tstates: rp === 'ix' || rp === 'iy' ? 10: 6,
+        tstates: 6,
         execute: () => {
             cpu.sp = cpu[rp];
         },
@@ -450,7 +427,9 @@ export const bit_y_r = (cpu: Cpu, y: number, r: R) => {
         tstates: 8,
         execute: () => {
             const mask = 1 << y;
-            cpu.flags.z = !(mask & cpu[r])
+            cpu.flags.z = !(mask & cpu[r]);
+            cpu.flags.s = y === 7 && (!cpu.flags.z);
+            cpu.flags.pv = cpu.flags.z
             cpu.flags.h = true;
             cpu.flags.n = false;
         },
@@ -501,7 +480,7 @@ export const in_a_n = (cpu: Cpu, n: number) => {
 
 export const ex_mem_sp_rp = (cpu: Cpu, rp: RP) => {
     return {
-        tstates: rp === 'ix' || rp === 'iy' ? 23: 19,
+        tstates: 19,
         execute: () => {
             let tmp = cpu.bus.read16(cpu.sp);
             cpu.bus.write16(cpu.sp, cpu[rp]);
@@ -546,7 +525,7 @@ export const ei = (cpu: Cpu) => {
 
 export const push_rp = (cpu: Cpu, rp: RP) => {
     return {
-        tstates: rp === 'ix' || rp === 'iy' ? 15 : 11,
+        tstates: 11,
         execute: () => {
             cpu.push16(cpu[rp]);
         },
@@ -659,9 +638,9 @@ export const adc_hl_rp = (cpu: Cpu, rp: RP) => {
     }
 }
 
-export const ld_nn_rp = (cpu: Cpu, rp: RP, nn: number) => {
+export const ld_mem_nn_rp = (cpu: Cpu, rp: RP, nn: number) => {
     return {
-        tstates: rp === 'hl' ? 16 : 20,
+        tstates: rp === 'hl' || rp.startsWith('i') ? 16 : 20,
         execute: () => {
             cpu.bus.write16(nn, cpu[rp]);
         },
@@ -683,7 +662,14 @@ export const neg = (cpu: Cpu) => {
     return {
         tstates: 8,
         execute: () => {
-            cpu.a = ~cpu.a;
+            const result = (0 - cpu.a) & 0xff;
+            cpu.flags.pv = cpu.a === 0x80;
+            cpu.flags.c = cpu.a !== 0;
+            cpu.flags.h = !!((0 - (cpu.a & 0xf)) && 0x10);
+            cpu.flags.s = !!(result & 0x80);
+            cpu.flags.z = !result;
+            cpu.flags.n = true;
+            cpu.a = result;
         },
         disassembly: () => 'neg'
     }
@@ -747,6 +733,8 @@ export const bit_y_idx = (cpu: Cpu,  y: number, address: number) => {
         execute: () => {
             const mask = 1 << y;
             cpu.flags.z = !(mask & cpu.bus.read8(address));
+            cpu.flags.s = y === 7 && (!cpu.flags.z);
+            cpu.flags.pv = cpu.flags.z
             cpu.flags.h = true;
             cpu.flags.n = false;
         },
@@ -801,6 +789,7 @@ export const ld_set_y_idx = (cpu: Cpu,  y: number, address: number, r: R) => {
 }
 
 export const bl_i = (cpu: Cpu, bli: BLI) => {
+    if (bli === undefined) return nop();
     return {
         tstates: bli.iname.endsWith('r') && cpu.b === 1 ? 21 : 16,
         execute: () => { bli(cpu) },
@@ -814,9 +803,9 @@ export const rrd = (cpu: Cpu) => {
         execute: () => {
             const a = cpu.a;
             const byte = cpu.bus.read8(cpu.hl);
-            cpu.a = (byte & 0xf);
+            cpu.a = (cpu.a & 0xf0) | (byte & 0xf);
             cpu.bus.write8(cpu.hl, ((a & 0xf) << 4) | (byte >>> 4)); 
-            cpu.flags.s = !!(cpu.a * 0x80);
+            cpu.flags.s = !!(cpu.a & 0x80);
             cpu.flags.z = !cpu.a;
             cpu.flags.h = false;
             cpu.flags.pv = alu.parity(cpu.a);
@@ -832,9 +821,9 @@ export const rld = (cpu: Cpu) => {
         execute: () => {
             const a = cpu.a;
             const byte = cpu.bus.read8(cpu.hl);
-            cpu.a = byte >>> 4;
+            cpu.a = (cpu.a & 0xf0) | (byte >>> 4);
             cpu.bus.write8(cpu.hl, (byte << 4) | (a & 0xf));
-            cpu.flags.s = !!(cpu.a * 0x80);
+            cpu.flags.s = !!(cpu.a & 0x80);
             cpu.flags.z = !cpu.a;
             cpu.flags.h = false;
             cpu.flags.pv = alu.parity(cpu.a);

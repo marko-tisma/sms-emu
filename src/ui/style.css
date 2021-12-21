@@ -95,3 +95,7 @@ input[type="text"] {
   /* border-radius: 4px; */
 }
 
+#tiles {
+  margin: 100px;
+}
+
