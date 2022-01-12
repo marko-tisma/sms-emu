@@ -1,4 +1,4 @@
-import { decodeBase, registerPairs } from "../decoder";
+import { decode, decodeBase, registerPairs } from "../decoder";
 import { Instruction } from "../decoder";
 import { Sms } from "./sms";
 import { toHex, testBit } from "../util";
@@ -107,7 +107,7 @@ export class Debugger {
         const instructions = [];
         for (let i = 0; i < count; i++) {
             const currPc = cpu.pc;
-            let decoded = decodeBase(cpu.next8());
+            let decoded = decode(cpu.next8(), cpu);
             const instruction = decoded.instructionConstructor(cpu, decoded.params);
             let disassembly = instruction.disassembly();
             if (disassembly.includes('NN')) {
