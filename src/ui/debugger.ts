@@ -1,5 +1,5 @@
-import { decode, wordRegisters } from "../decoder";
-import { Instruction } from "../instructions";
+import { decodeBase, registerPairs } from "../decoder";
+import { Instruction } from "../decoder";
 import { Sms } from "./sms";
 import { toHex, testBit } from "../util";
 
@@ -8,27 +8,57 @@ export class Debugger {
     breakpoints = new Set();
 
     constructor(private sms: Sms) {
-        document.getElementById('step')!.addEventListener('click', () => this.step());
-        document.getElementById('pause')!.addEventListener('click', () => this.pause());
-        document.getElementById('continue')!.addEventListener('click', () => this.continue());
+        document.getElementById('step')!.addEventListener('click', () => {
+            this.step();
+        });
+        document.getElementById('pause')!.addEventListener('click', () => {
+            this.pause();
+        });
+        document.getElementById('continue')!.addEventListener('click', () => {
+            this.continue();
+        });
         document.getElementById('mem_show')!.addEventListener('click', () => {
-           const input = document.getElementById('mem_addr')! as HTMLInputElement;
-           const address = parseInt(input.value, 16);
-           if (!isNaN(address)) {
-               const bytes = this.sms.cpu.bus.readn(address, 10);
-               const text = `${toHex(address, 4)}: ${bytes.map(b => `$${toHex(b, 2)}`).join(', ')}`;
-               const list = document.getElementById('mem')! as HTMLUListElement;
-               this.addLi(list, text);
-           }
+            this.showMemory();
         });
         document.getElementById('mem_clear')!.addEventListener('click', () => {
-            const list = document.getElementById('mem')! as HTMLUListElement;
-            list.innerHTML = '';
+            this.clearMemory();
         });
     }
 
+    step() {
+        this.sms.cpu.step();
+        this.update();
+    }
+
+    pause() {
+        this.breakpoints.add(this.sms.cpu.pc);
+        cancelAnimationFrame(this.sms.animationRequest);
+        this.update();
+    }
+
+    continue() {
+        this.sms.cpu.step();
+        this.sms.animationRequest = requestAnimationFrame(this.sms.runFrame)
+    }
+
+    showMemory() {
+        const input = document.getElementById('mem_addr')! as HTMLInputElement;
+        const address = parseInt(input.value, 16);
+        if (!isNaN(address)) {
+            const bytes = this.sms.cpu.bus.readn(address, 10);
+            const text = `${toHex(address, 4)}: ${bytes.map(b => `$${toHex(b, 2)}`).join(', ')}`;
+            const list = document.getElementById('mem')! as HTMLUListElement;
+            this.addLi(list, text);
+        }
+    }
+
+    clearMemory() {
+        const list = document.getElementById('mem')! as HTMLUListElement;
+        list.innerHTML = '';
+    }
+
     update() {
-        this.updateDisassembly(this.decodeInstructions(1000));
+        this.updateDisassembly(this.decodeNextInstructions(1000));
         this.updateState();
     }
 
@@ -42,9 +72,7 @@ export class Debugger {
                 li.classList.add('breakpoint');
             }
             li.setAttribute('id', address.toString());
-            li.addEventListener('click', (e: Event) => {
-                e.stopPropagation();
-                e.preventDefault();
+            li.addEventListener('click', () => {
                 if (this.breakpoints.has(address)) {
                     this.breakpoints.delete(address);
                     li.classList.remove('breakpoint');
@@ -70,7 +98,7 @@ export class Debugger {
         list.appendChild(li);
     }
 
-    decodeInstructions(count: number, start?: number): Instruction[] {
+    decodeNextInstructions(count: number, start?: number): Instruction[] {
         const cpu = this.sms.cpu;
         let startPc = cpu.pc;
         if (start) {
@@ -78,10 +106,22 @@ export class Debugger {
         }
         const instructions = [];
         for (let i = 0; i < count; i++) {
-          const currPc = cpu.pc;
-          const instruction = decode(cpu.next8(), cpu);
-          instruction.address = currPc;
-          instructions.push(instruction);
+            const currPc = cpu.pc;
+            let decoded = decodeBase(cpu.next8());
+            const instruction = decoded.instructionConstructor(cpu, decoded.params);
+            let disassembly = instruction.disassembly();
+            if (disassembly.includes('NN')) {
+                disassembly = disassembly.replace('NN', toHex(cpu.next16(), 4));
+            }
+            if (disassembly.includes('N')) {
+                disassembly = disassembly.replace('N', toHex(cpu.next8(), 2));
+            }
+            if (disassembly.includes('D')) {
+                disassembly = disassembly.replace('D', toHex(cpu.next8Signed(), 2));
+            }
+            instruction.disassembly = () => disassembly;
+            instruction.address = currPc;
+            instructions.push(instruction);
         }
         cpu.pc = startPc;
         return instructions;
@@ -92,7 +132,7 @@ export class Debugger {
         const cpuList = document.getElementById('cpu')! as HTMLUListElement;
         cpuList.innerHTML = '';
 
-        let text = wordRegisters.map(rp => `${rp}: $${toHex(cpu[rp], 4)}`).join(', ');
+        let text = registerPairs.map(rp => `${rp}: $${toHex(cpu[rp], 4)}`).join(', ');
         this.addLi(cpuList, text);
         this.addLi(cpuList, `(hl): $${toHex(cpu['(hl)'], 2)}, (hl + 1): $${toHex(cpu.bus.read8(cpu.hl + 1), 2)}`);
 
@@ -107,21 +147,4 @@ export class Debugger {
         this.addLi(vdpList, `vdp registers: ${vdp.registers.map((r, i) => i + ': $' + toHex(r, 2)).join(', ')}`);
     }
 
-    continue() {
-        // this.breakpoints.delete(this.sms.cpu.pc);
-        // requestAnimationFrame(() => this.runFrame);
-        this.step();
-        this.sms.animationRequest = requestAnimationFrame(this.sms.runFrame)
-    }
-
-    step() {
-        const tstates = this.sms.cpu.run(this.sms.cpu.next8());
-        this.update();
-    }
-
-    pause() {
-        this.breakpoints.add(this.sms.cpu.pc);
-        cancelAnimationFrame(this.sms.animationRequest);
-        this.update();
-    }
 }

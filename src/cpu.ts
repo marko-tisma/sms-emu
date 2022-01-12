@@ -1,5 +1,8 @@
+import * as alu from "./alu";
 import { Bus } from "./bus";
-import { decode, IMODE } from "./decoder";
+import { decode, decodeBase, decodeCb, decodeEd, decodeIdx, decodeIdxcb, InterruptMode } from "./decoder";
+import { Instruction } from "./decoder";
+import { generateInstructionTable } from "./table_generator";
 import { Register } from "./register";
 import { toSigned } from "./util";
 
@@ -7,8 +10,11 @@ export enum RegisterName {
     B, C, D, E, H, L, F, A
 }
 
+enum DecodingMode {
+    TABLE, DECODE
+}
 export class Cpu {
-    
+
     // 8 bit general registers
     registers: Register[];
 
@@ -48,8 +54,8 @@ export class Cpu {
 
     halted = false;
 
-    interruptMode: IMODE;
-    // Last instruction was EI
+    interruptMode: InterruptMode;
+    // Last instruction was enable interrupts
     eiRequested = false;
     // Pause was pressed
     resetRequested = false;
@@ -59,14 +65,24 @@ export class Cpu {
     // Temp storage for iff1 during nonmaskable interrupt
     iff2 = false;
 
+    // Table mode trades off using more memory for better execution time
+    decodingMode = DecodingMode.TABLE;
+    instructionTable: Instruction[] = [];
+
+    // Functions in table mode are scoped to cpu object so they need these
+    alu = alu;
+    RegisterName = RegisterName;
 
     constructor(public bus: Bus) {
         this.registers = Array.from({length: 8}, () => new Register(1));
         this.shadowRegisters = Array.from({length: 8}, () => new Register(1));
-        // this.sp = 0xdff0;
+        this.sp = 0xdff0;
+        if (this.decodingMode === DecodingMode.TABLE) {
+            this.instructionTable = generateInstructionTable(this);
+        }
     }
 
-    run(op: number): number {
+    step(): number {
         this.handleInterrupts();
         if (this.halted) return 4;
         if (this.eiRequested) {
@@ -74,9 +90,19 @@ export class Cpu {
             this.iff2 = true;
             this.eiRequested = false;
         }
-        const instruction = decode(op, this);
+
+        let op = this.next8();
+        let instruction: Instruction;
+        if (this.decodingMode === DecodingMode.DECODE) {
+            let decoded = decode(op, this);
+            instruction = decoded.instructionConstructor(this, decoded.params);
+        }
+        else {
+            // instruction = this.instructionTable[InstructionTable.BASE][op];
+            instruction = this.instructionTable[op];
+        }
         instruction.execute();
-        return instruction.tstates;
+        return instruction.tstates();
     }
 
     handleInterrupts(): void {
@@ -89,7 +115,7 @@ export class Cpu {
             this.push16(this.pc);
             this.pc = 0x66;
         }
-        if (this.bus.vdp.requestedInterrupt) {
+        else if (this.bus.vdp.requestedInterrupt) {
             if (this.iff1 && this.interruptMode === 1) {
                 this.iff1 = this.iff2 = false;
                 this.halted = false;
@@ -263,3 +289,5 @@ export class Cpu {
 
     set sp(value: number) { this._sp.value = value; }
 }
+
+

@@ -83,7 +83,10 @@ export class Bus {
     }
 
     read16(address: number, littleEndian=true): number {
-        return littleEndian ? (this.read8(address + 1) << 8) + this.read8(address) : (this.read8(address) << 8) + this.read8(address + 1);
+        if (littleEndian) {
+            return (this.read8(address + 1) << 8) + this.read8(address);
+        }
+        return (this.read8(address) << 8) + this.read8(address + 1);
     }
 
     write16(address: number, value: number): void {

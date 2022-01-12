@@ -1,283 +1,309 @@
-import * as Alu from "./alu"
+import * as alu from "./alu"
 import { Cpu } from "./cpu"
 import * as ins from "./instructions"
-import { get, Instruction } from "./instructions"
+import { get } from "./instructions"
 
+export const singleRegisters = [
+    'b', 'c', 'd', 'e', 'h', 'l', 'f', 'a', 'ixh', 'ixl', 'iyh', 'iyl'
+] as const;
+export type RegisterSingle = typeof singleRegisters[number] | '(hl)' | '(ix + d)' | '(iy + d)';
 
-export const byteRegisters = ['b', 'c', 'd', 'e', 'h', 'l', 'f', 'a', 'ixh', 'ixl', 'iyh', 'iyl' ] as const;
-export type R = typeof byteRegisters[number] | '(hl)' | '(ix + d)' | '(iy + d)';
+export const registerPairs = [
+    'af', 'bc', 'de', 'hl', 'pc', 'sp', 'ix', 'iy'
+] as const;
+export type RegisterPair = typeof registerPairs[number];
 
-export const wordRegisters = ['af', 'bc', 'de', 'hl', 'pc','sp', 'ix', 'iy'] as const;
-export type RP = typeof wordRegisters[number];
-
-export type IMODE = 0 | 1 | 2 | undefined;
-export interface CC {
+export type InterruptMode = 0 | 1 | 2 | undefined;
+export interface ConditionalFunction {
     (cpu: Cpu): boolean,
-    iname: string
+    fname: string
 }
-export interface ROT {
+export interface RotateFunction {
     (cpu: Cpu, operand: number): number,
-    iname: string
+    fname: string
 }
-export interface ALU {
+export interface AccumulatorFunction {
     (cpu: Cpu, operand: number): void,
-    iname: string
+    fname: string
 }
-export interface BLI {
+export interface BlockFunction {
     (cpu: Cpu): boolean | void,
-    iname: string
+    fname: string
+}
+
+export type Param =
+    RegisterSingle | RegisterPair | AccumulatorFunction | BlockFunction
+    | ConditionalFunction | RotateFunction | InterruptMode | number;
+
+export interface Params {
+    [key: string]: Param,
+}
+
+export interface Instruction {
+    tstates: () => number,
+    execute: () => void,
+    disassembly: () => string,
+    address?: number
+}
+
+export interface Decoded {
+    instructionConstructor: (cpu: Cpu, params?: Params) => Instruction,
+    params?: Params
 }
 
 // Tables used for decoding opcodes
-const r: R[] = ['b', 'c', 'd', 'e', 'h', 'l', '(hl)', 'a'];
-const rp: RP[] = ['bc', 'de', 'hl', 'sp'];
-const rp2: RP[] = ['bc', 'de', 'hl', 'af'];
-const alu: ALU[] = [Alu.addAcc, Alu.adcAcc, Alu.subAcc, Alu.sbcAcc, Alu.andAcc, Alu.xorAcc, Alu.orAcc, Alu.cpAcc];
-const rot: ROT[] = [Alu.rlc, Alu.rrc, Alu.rl, Alu.rr, Alu.sla, Alu.sra, Alu.sll, Alu.srl];
-const bli: BLI[][] = [
+const rs: RegisterSingle[] = ['b', 'c', 'd', 'e', 'h', 'l', '(hl)', 'a'];
+const rp: RegisterPair[] = ['bc', 'de', 'hl', 'sp'];
+const rp2: RegisterPair[] = ['bc', 'de', 'hl', 'af'];
+const acc: AccumulatorFunction[] = [
+    alu.addAcc, alu.adcAcc, alu.subAcc, alu.sbcAcc,
+    alu.andAcc, alu.xorAcc, alu.orAcc, alu.cpAcc
+];
+const rot: RotateFunction[] = [
+    alu.rlc, alu.rrc, alu.rl, alu.rr, alu.sla, alu.sra, alu.sll, alu.srl
+];
+const bli: BlockFunction[][] = [
     [], [], [], [],
-    [Alu.ldi, Alu.cpi, Alu.ini, Alu.outi],
-    [Alu.ldd, Alu.cpd, Alu.ind, Alu.outd],
-    [Alu.ldir, Alu.cpir, Alu.inir, Alu.otir],
-    [Alu.lddr, Alu.cpdr, Alu.indr, Alu.otdr]
+    [alu.ldi, alu.cpi, alu.ini, alu.outi],
+    [alu.ldd, alu.cpd, alu.ind, alu.outd],
+    [alu.ldir, alu.cpir, alu.inir, alu.otir],
+    [alu.lddr, alu.cpdr, alu.indr, alu.otdr]
 ]
-const im: IMODE[] = [0, undefined, 1, 2, 0, undefined, 1, 2];
+const im: InterruptMode[] = [0, undefined, 1, 2, 0, undefined, 1, 2];
 
 const nz = (cpu: Cpu) => !cpu.flags.z;
-nz.iname = 'nz';
+nz.fname = 'nz';
 const z = (cpu: Cpu) => cpu.flags.z;
-z.iname = 'z';
+z.fname = 'z';
 const nc = (cpu: Cpu) => !cpu.flags.c;
-nc.iname = 'nc';
+nc.fname = 'nc';
 const c = (cpu: Cpu) => cpu.flags.c;
-c.iname = 'c';
+c.fname = 'c';
 const po = (cpu: Cpu) => !cpu.flags.pv;
-po.iname = 'po';
+po.fname = 'po';
 const pe = (cpu: Cpu) => cpu.flags.pv;
-pe.iname = 'pe';
+pe.fname = 'pe';
 const p = (cpu: Cpu) => !cpu.flags.s;
-p.iname = 'p';
+p.fname = 'p';
 const m = (cpu: Cpu) => cpu.flags.s;
-m.iname = 'm';
+m.fname = 'm';
 
-const cc: CC[] = [nz, z, nc, c, po, pe, p, m];
+const cc: ConditionalFunction[] = [nz, z, nc, c, po, pe, p, m];
 
-export const decode = (op: number, cpu: Cpu): Instruction => {
-    if (op === 0xed) {
-        return ed(cpu.next8(), cpu);
+export const decode = (op: number, cpu: Cpu): Decoded => {
+    switch (op) {
+        case 0xed: return decodeEd(cpu.next8());
+        case 0xcb: return decodeCb(cpu.next8());
+        case 0xdd:
+            op = cpu.next8();
+            if (op === 0xcb) return decodeIdxcb(cpu.bus.read8(cpu.pc + 1), 'ix');
+            return decodeIdx(op, 'ix');
+        case 0xfd:
+            op = cpu.next8();
+            if (op === 0xcb) return decodeIdxcb(cpu.bus.read8(cpu.pc + 1), 'iy');
+            return decodeIdx(op, 'iy');
+        default: return decodeBase(op);
     }
-    else if (op === 0xdd) {
-        return idx(cpu.next8(), cpu, "ix");
-    }
-    else if (op === 0xfd) {
-        return idx(cpu.next8(), cpu, "iy");
-    }
+}
 
+export const decodeBase = (op: number): Decoded => {
     const [x, y, z, p, q] = opPatterns(op);
     switch (x) {
         case 0:
             switch (z) {
-                case 0: 
-                    if (y === 0) return get(cpu, ins.nop);
-                    if (y === 1) return get(cpu, ins.ex_af_af1);
-                    if (y === 2) return get(cpu, ins.djnz_d, cpu.next8Signed());
-                    if (y === 3) return get(cpu, ins.jr_d, cpu.next8Signed()); 
-                    if (4 <= y && y <= 7) return get(cpu, ins.jr_cc, cc[y - 4], cpu.next8Signed());
-                    return get(cpu, ins.nop);
-                case 1: 
-                    if (q === 0) return get(cpu, ins.ld_rp_nn, rp[p], cpu.next16()); 
-                    if (q === 1) return get(cpu, ins.add_rp_rp, rp[2], rp[p]);
-                    return get(cpu, ins.nop);
-                case 2: 
+                case 0:
+                    if (y === 0) return get(ins.nop);
+                    if (y === 1) return get(ins.ex_af_af1);
+                    if (y === 2) return get(ins.djnz_d);
+                    if (y === 3) return get(ins.jr_d);
+                    if (4 <= y && y <= 7) return get(ins.jr_cc, { cc: cc[y - 4] });
+                    return get(ins.nop);
+                case 1:
+                    if (q === 0) return get(ins.ld_rp_nn, { rp: rp[p] });
+                    if (q === 1) return get(ins.add_rp_rp, { dst: rp[2], src: rp[p] });
+                    return get(ins.nop);
+                case 2:
                     if (q === 0) {
-                        if (p === 0) return get(cpu, ins.ld_mem_rp_a, 'bc');
-                        if (p === 1) return get(cpu, ins.ld_mem_rp_a, 'de');
-                        if (p === 2) return get(cpu, ins.ld_mem_nn_rp, rp[p], cpu.next16());
-                        if (p === 3) return get(cpu, ins.ld_mem_nn_r, 'a', cpu.next16());
+                        if (p === 0) return get(ins.ld_mem_rp_a, { rp: 'bc' });
+                        if (p === 1) return get(ins.ld_mem_rp_a, { rp: 'de' });
+                        if (p === 2) return get(ins.ld_mem_nn_rp, { rp: rp[p] });
+                        if (p === 3) return get(ins.ld_mem_nn_a);
                     }
                     if (q === 1) {
-                        if (p === 0) return get(cpu, ins.ld_a_mem_rp, 'bc');
-                        if (p === 1) return get(cpu, ins.ld_a_mem_rp, 'de'); 
-                        if (p === 2) return get(cpu, ins.ld_rp_mem_nn, rp[p], cpu.next16());
-                        if (p === 3) return get(cpu, ins.ld_a_mem_nn, cpu.next16());
+                        if (p === 0) return get(ins.ld_a_mem_rp, { rp: 'bc' });
+                        if (p === 1) return get(ins.ld_a_mem_rp, { rp: 'de' });
+                        if (p === 2) return get(ins.ld_rp_mem_nn, { rp: rp[p] });
+                        if (p === 3) return get(ins.ld_a_mem_nn);
                     }
-                    return get(cpu, ins.nop);
-                case 3: 
-                    if (q === 0) return get(cpu, ins.inc_rp, rp[p]);
-                    if (q === 1) return get(cpu, ins.dec_rp, rp[p]);
-                    return get(cpu, ins.nop);
-                case 4: return get(cpu, ins.inc_r, r[y]);
-                case 5: return get(cpu, ins.dec_r, r[y]);
-                case 6: return get(cpu, ins.ld_r_n, r[y], cpu.next8());
-                case 7: 
+                    return get(ins.nop);
+                case 3:
+                    if (q === 0) return get(ins.inc_rp, { rp: rp[p] });
+                    if (q === 1) return get(ins.dec_rp, { rp: rp[p] });
+                    return get(ins.nop);
+                case 4: return get(ins.inc_r, { rs: rs[y] });
+                case 5: return get(ins.dec_r, { rs: rs[y] });
+                case 6: return get(ins.ld_r_n, { rs: rs[y] });
+                case 7:
                     switch (y) {
-                        case 0: return get(cpu, ins.rot_a, Alu.rlc);
-                        case 1: return get(cpu, ins.rot_a, Alu.rrc);
-                        case 2: return get(cpu, ins.rot_a, Alu.rl);
-                        case 3: return get(cpu, ins.rot_a, Alu.rr);
-                        case 4: return get(cpu, ins.daa);
-                        case 5: return get(cpu, ins.cpl);
-                        case 6: return get(cpu, ins.scf);
-                        case 7: return get(cpu, ins.ccf);
+                        case 0: return get(ins.rot_a, { rot: alu.rlc });
+                        case 1: return get(ins.rot_a, { rot: alu.rrc });
+                        case 2: return get(ins.rot_a, { rot: alu.rl });
+                        case 3: return get(ins.rot_a, { rot: alu.rr });
+                        case 4: return get(ins.daa);
+                        case 5: return get(ins.cpl);
+                        case 6: return get(ins.scf);
+                        case 7: return get(ins.ccf);
                     }
-                default: return get(cpu, ins.nop);
+                default: return get(ins.nop);
             }
-        case 1: 
-            if (z === 6 && y === 6) return get(cpu, ins.halt);
-            return get(cpu, ins.ld_r_r, r[y], r[z]);
-        case 2: return get(cpu, ins.alu_r, alu[y], r[z]);
-        case 3: 
+        case 1:
+            if (z === 6 && y === 6) return get(ins.halt);
+            return get(ins.ld_r_r, { dst: rs[y], src: rs[z] });
+        case 2: return get(ins.alu_r, { acc: acc[y], rs: rs[z] });
+        case 3:
             switch (z) {
-                case 0: return get(cpu, ins.ret_cc, cc[y])
-                case 1: 
-                    if (q === 0) return get(cpu, ins.pop_rp, rp2[p]);
+                case 0: return get(ins.ret_cc, { cc: cc[y] })
+                case 1:
+                    if (q === 0) return get(ins.pop_rp, { rp: rp2[p] });
                     if (q === 1) {
-                        if (p === 0) return get(cpu, ins.ret);
-                        if (p === 1) return get(cpu, ins.exx);
-                        if (p === 2) return get(cpu, ins.jp_rp, rp[2]);
-                        if (p === 3) return get(cpu, ins.ld_sp_rp, rp[2]);
+                        if (p === 0) return get(ins.ret);
+                        if (p === 1) return get(ins.exx);
+                        if (p === 2) return get(ins.jp_rp, { rp: rp[2] });
+                        if (p === 3) return get(ins.ld_sp_rp, { rp: rp[2] });
                     }
-                    return get(cpu, ins.nop);
-                case 2: return get(cpu, ins.jp_cc_nn, cc[y], cpu.next16());
+                    return get(ins.nop);
+                case 2: return get(ins.jp_cc_nn, { cc: cc[y] });
                 case 3: {
                     switch (y) {
-                        case 0: return get(cpu, ins.jp_nn, cpu.next16());
+                        case 0: return get(ins.jp_nn);
                         case 1:
                             // CB
-                            const [x, y, z, ] = opPatterns(cpu.next8());
-                            if (x === 0) return get(cpu, ins.rot_r, rot[y], r[z]);
-                            if (x === 1) return get(cpu, ins.bit_y_r, y, r[z]);
-                            if (x === 2) return get(cpu, ins.res_y_r, y, r[z]);
-                            if (x === 3) return get(cpu, ins.set_y_r, y, r[z]);
                             break;
-                        case 2: return get(cpu, ins.out_n_a, cpu.next8());
-                        case 3: return get(cpu, ins.in_a_n, cpu.next8());
-                        case 4: return get(cpu, ins.ex_mem_sp_rp, rp[2]);
-                        case 5: return get(cpu, ins.ex_de_hl);
-                        case 6: return get(cpu, ins.di);
-                        case 7: return get(cpu, ins.ei);
-                        default: return get(cpu, ins.nop);
+                        case 2: return get(ins.out_n_a);
+                        case 3: return get(ins.in_a_n);
+                        case 4: return get(ins.ex_mem_sp_rp, { rp: rp[2] });
+                        case 5: return get(ins.ex_de_hl);
+                        case 6: return get(ins.di);
+                        case 7: return get(ins.ei);
+                        default: return get(ins.nop);
                     }
                 }
-                case 4: return get(cpu, ins.call_cc_nn, cc[y], cpu.next16());
+                case 4: return get(ins.call_cc_nn, { cc: cc[y] });
                 case 5:
-                    if (q === 0) return get(cpu, ins.push_rp, rp2[p]);
+                    if (q === 0) return get(ins.push_rp, { rp: rp2[p] });
                     if (q === 1) {
-                        if (p === 0) return get(cpu, ins.call_nn, cpu.next16());
+                        if (p === 0) return get(ins.call_nn);
                     }
-                    return get(cpu, ins.nop);
-                case 6: return get(cpu, ins.alu_n, alu[y], cpu.next8());
-                case 7: return get(cpu, ins.rst, y * 8);
-                default: return get(cpu, ins.nop);
-        }
+                    return get(ins.nop);
+                case 6: return get(ins.alu_n, { acc: acc[y] });
+                case 7: return get(ins.rst, { address: y * 8 });
+                default: return get(ins.nop);
+            }
         default:
             break;
     }
-    return get(cpu, ins.nop);
+    return get(ins.nop);
 }
 
-const ed = (op: number, cpu: Cpu): Instruction => {
-    const [x, y, z, p, q] = opPatterns(op);
+export const decodeCb = (op: number): Decoded => {
+    const [x, y, z,] = opPatterns(op);
+    if (x === 0) return get(ins.rot_r, { rot: rot[y], rs: rs[z] });
+    if (x === 1) return get(ins.bit_y_r, { y: y, rs: rs[z] });
+    if (x === 2) return get(ins.res_y_r, { y: y, rs: rs[z] });
+    if (x === 3) return get(ins.set_y_r, { y: y, rs: rs[z] });
+    return get(ins.nop);
+}
 
-    if (x === 0 || x === 3) return get(cpu, ins.noni);
+export const decodeEd = (op: number): Decoded => {
+    const [x, y, z, p, q] = opPatterns(op);
+    if (x === 0 || x === 3) return get(ins.noni);
     if (x === 1) {
         switch (z) {
             case 0:
-                if (y === 6) return get(cpu, ins.in_c);
-                return get(cpu, ins.in_r_c, r[y]);
+                if (y === 6) return get(ins.in_c);
+                return get(ins.in_r_c, { rs: rs[y] });
             case 1:
-                if (y === 6) return get(cpu, ins.out_c_0);
-                return get(cpu, ins.out_c_r, r[y]);
+                if (y === 6) return get(ins.out_c_0);
+                return get(ins.out_c_r, { rs: rs[y] });
             case 2:
-                if (q === 0) return get(cpu, ins.sbc_hl_rp, rp[p]);
-                if (q === 1) return get(cpu, ins.adc_hl_rp, rp[p]);
+                if (q === 0) return get(ins.sbc_hl_rp, { rp: rp[p] });
+                if (q === 1) return get(ins.adc_hl_rp, { rp: rp[p] });
                 break;
             case 3:
-                if (q === 0) return get(cpu, ins.ld_mem_nn_rp, rp[p], cpu.next16());
-                if (q === 1) return get(cpu, ins.ld_rp_mem_nn, rp[p], cpu.next16());
+                if (q === 0) return get(ins.ld_mem_nn_rp, { rp: rp[p] });
+                if (q === 1) return get(ins.ld_rp_mem_nn, { rp: rp[p] });
                 break;
-            case 4: return get(cpu, ins.neg);
+            case 4: return get(ins.neg);
             case 5:
-                if (y === 1) return get(cpu, ins.reti);
-                return get(cpu, ins.retn);
-            case 6: return get(cpu, ins.im, im[y]);
+                if (y === 1) return get(ins.reti);
+                return get(ins.retn);
+            case 6: return get(ins.im, { im: im[y] });
             case 7:
-                if (y === 0) return get(cpu, ins.ld_i_a);
-                if (y === 2) return get(cpu, ins.ld_a_i);
-                if (y === 4) return get(cpu, ins.rrd);
-                if (y === 5) return get(cpu, ins.rld);
+                if (y === 0) return get(ins.ld_i_a);
+                if (y === 2) return get(ins.ld_a_i);
+                if (y === 4) return get(ins.rrd);
+                if (y === 5) return get(ins.rld);
                 break;
             default:
-                return get(cpu, ins.nop);
+                return get(ins.nop);
         }
     }
     if (x === 2) {
-        if (z <= 3 && y >= 4) return get(cpu, ins.bl_i, bli[y][z]);
-        return get(cpu, ins.noni);
+        if (z <= 3 && y >= 4) return get(ins.bl_i, { bli: bli[y][z] });
+        return get(ins.noni);
     }
-    return get(cpu, ins.nop);
+    return get(ins.nop);
 }
 
-const idx = (op: number, cpu: Cpu, idxReg: 'ix' | 'iy'): Instruction => {
-    if (op === 0xcb) {
-        const d = cpu.next8Signed();
-        const [x, y, z, ] = opPatterns(cpu.next8());
-        const address = cpu[idxReg] + d;
-        switch (x) {
-            case 0: 
-                if (z !== 6) return get(cpu, ins.ld_r_rot_idx, rot[y], address, r[z])
-                else return get(cpu, ins.rot_idx, rot[y], address);
-            case 1: return get(cpu, ins.bit_y_idx, y, address); 
-            case 2:
-                if (z !== 6) return get(cpu, ins.ld_res_y_idx, y, address, r[z])
-                else return get(cpu, ins.res_y_idx, y, address);
-            case 3:
-                if (z !== 6) return get(cpu, ins.ld_set_y_idx, y, address, r[z])
-                else return get(cpu, ins.set_y_idx, y, address);
-            default:
-                return get(cpu, ins.nop);
-        }
-    }
-    if (op === 0x22) {
-        console.log("!")
-    }
-    if (op === 0x34) return get(cpu, ins.inc_idx, idxReg, cpu.next8Signed());
-    if (op === 0x35) return get(cpu, ins.dec_idx, idxReg, cpu.next8Signed());
-    if (op === 0x36) {
-        const d = cpu.next8Signed();
-        return get(cpu, ins.ld_idx_n, idxReg, cpu.next8(), d);
-    }
 
-    rp[2] = idxReg;
-    rp2[2] = idxReg;
-    r[4] = `${idxReg}h`;
-    r[5] = `${idxReg}l`;
-    r[6] = `(${idxReg} + d)`;
+export const decodeIdx = (op: number, idx: 'ix' | 'iy'): Decoded => {
+    if (op === 0x34) return get(ins.inc_idx, { idx: idx });
+    if (op === 0x35) return get(ins.dec_idx, { idx: idx });
+    if (op === 0x36) return get(ins.ld_idx_n, { idx: idx });
 
-    const [x, y, z, ] = opPatterns(op);
+    rp[2] = idx;
+    rp2[2] = idx;
+    rs[4] = `${idx}h`;
+    rs[5] = `${idx}l`;
+    rs[6] = `(${idx} + d)`;
+    const [x, y, z,] = opPatterns(op);
     if (x === 1 && (y === 6 || z === 6)) {
-        r[4] = r[4][2] as R;
-        r[5] = r[5][2] as R;
+        rs[4] = rs[4][2] as RegisterSingle;
+        rs[5] = rs[5][2] as RegisterSingle;
     }
-    const instruction = decode(op, cpu);
+
+    const decoded = decodeBase(op);
     rp[2] = 'hl';
     rp2[2] = 'hl';
-    r[4] = 'h';
-    r[5] = 'l';
-    r[6] = '(hl)';
-    instruction.tstates += 4;
-    if (instruction.disassembly().includes('(i')) instruction.tstates += 12;
-    return instruction;
+    rs[4] = 'h';
+    rs[5] = 'l';
+    rs[6] = '(hl)';
+    return decoded;
 }
 
-const opPatterns = (op: number): number[] => {
+export const decodeIdxcb = (op: number, idx: 'ix' | 'iy') => {
+    const [x, y, z,] = opPatterns(op);
+    switch (x) {
+        case 0:
+            if (z !== 6) return get(ins.ld_r_rot_idx, { rot: rot[y], rs: rs[z], idx: idx });
+            else return get(ins.rot_idx, { rot: rot[y], idx: idx });
+        case 1: return get(ins.bit_y_idx, { y: y, idx: idx });
+        case 2:
+            if (z !== 6) return get(ins.ld_res_y_idx, { y: y, rs: rs[z], idx: idx })
+            else return get(ins.res_y_idx, { y: y, idx: idx });
+        case 3:
+            if (z !== 6) return get(ins.ld_set_y_idx, { y: y, rs: rs[z], idx: idx })
+            else return get(ins.set_y_idx, { y: y, idx: idx });
+        default:
+            return get(ins.nop);
+    }
+}
+
+export const opPatterns = (op: number): number[] => {
     const x = (op & 0xc0) >>> 6;
-    const y = (op & 0x38) >>> 3; 
+    const y = (op & 0x38) >>> 3;
     const z = op & 0x07;
     const p = y >>> 1;
     const q = y % 2;
-    return [x, y, z, p ,q];
+    return [x, y, z, p, q];
 }
-
-
-
