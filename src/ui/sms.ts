@@ -8,8 +8,11 @@ import "./style.css";
 
 // const romUrl = 'http://localhost:3000/rom/test/zexdoc.out';
 // const romUrl = 'http://localhost:3000/rom/test/HelloWorld.sms';
-const romUrl = 'http://localhost:3000/rom/ZEX/zexdoc.sms';
-// const romUrl = 'http://localhost:3000/rom/bios13.sms';
+// const romUrl = 'http://localhost:3000/rom/ZEX/zexdoc.sms';
+const romUrl = 'http://localhost:3000/rom/bios13.sms';
+// const romUrl = 'http://localhost:3000/rom/jpbios.sms';
+// const romUrl = 'http://localhost:3000/rom/smsproto.sms';
+// const romUrl = 'http://localhost:3000/rom/alex_kidd_bios.sms'
 // const romUrl = 'http://localhost:3000/rom/sonbios.sms';
 // const romUrl = 'http://localhost:3000/rom/sonic.sms';
 // const romUrl = 'http://localhost:3000/rom/z80test/z80doc.asm';
@@ -33,41 +36,31 @@ async function loadRomFromServer(url: string) {
 }
 export class Sms {
 	static CPU_CLOCK = 3579540;
-	static TSTATES_PER_FRAME = Math.floor(Sms.CPU_CLOCK / 60);
+	// static TSTATES_PER_FRAME = Math.ceil(Sms.CPU_CLOCK / 60);
+	static TSTATES_PER_FRAME = 59736;
 
 	cpu: Cpu;
 	vdp: Vdp;
-
-	canvas: HTMLCanvasElement;
-	imageData: ImageData;
-	width = 256;
-	height = 192;
-	canvasScale = 2;
 	debugger: Debugger;
 
 	animationRequest = 0;
+	running = false;
 
 	constructor(rom: Uint8Array) {
-		this.canvas = document.querySelector('#screen')!;
-		this.canvas.width = this.width * this.canvasScale;
-		this.canvas.height = this.height * this.canvasScale;
-		const ctx = this.canvas.getContext('2d')!;
-		this.imageData = ctx.createImageData(this.width, this.height);
-		this.imageData.data.fill(0xff);
-		ctx.putImageData(this.imageData, 0, 0);
-		ctx.drawImage(ctx.canvas, 0, 0, ctx.canvas.width * this.canvasScale, ctx.canvas.height * this.canvasScale);
-		this.vdp = new Vdp(this.imageData.data);
+		this.vdp = new Vdp(document.querySelector('#screen')!);
 		const bus = new Bus(new Cartridge(rom), this.vdp);
 		this.cpu = new Cpu(bus);
 		this.debugger = new Debugger(this);
 		this.debugger.breakpoints.add(0);
+		this.running = true;
 	}
 
 	runFrame = (timestamp: DOMHighResTimeStamp) => {
+		if (!this.running) return;
 		let tstatesElapsed = 0;
 		while (tstatesElapsed < Sms.TSTATES_PER_FRAME) {
 			if (this.debugger.breakpoints.has(this.cpu.pc)) {
-				cancelAnimationFrame(this.animationRequest);
+				this.running = false;
 				this.debugger.update();
 				return;
 			}
@@ -75,15 +68,7 @@ export class Sms {
 			tstatesElapsed += tstates;
 			this.vdp.run(tstates);
 		}
-		this.renderFrame();
 		console.log(`elapsed: ${performance.now() - timestamp}`);
 		this.animationRequest = requestAnimationFrame(this.runFrame);
 	}
-
-	renderFrame() {
-		const ctx = this.canvas.getContext('2d')!;
-		ctx.putImageData(this.imageData, 0, 0);
-		ctx.drawImage(ctx.canvas, 0, 0, ctx.canvas.width * this.canvasScale, ctx.canvas.height * this.canvasScale);
-	}
-
 }

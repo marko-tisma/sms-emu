@@ -31,7 +31,7 @@ export interface BlockFunction {
     fname: string
 }
 
-export type Param =
+type Param =
     RegisterSingle | RegisterPair | AccumulatorFunction | BlockFunction
     | ConditionalFunction | RotateFunction | InterruptMode | number;
 

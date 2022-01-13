@@ -54,7 +54,7 @@ export class Cpu {
 
     halted = false;
 
-    interruptMode: InterruptMode;
+    interruptMode: InterruptMode = 1;
     // Last instruction was enable interrupts
     eiRequested = false;
     // Pause was pressed
@@ -98,14 +98,13 @@ export class Cpu {
             instruction = decoded.instructionConstructor(this, decoded.params);
         }
         else {
-            // instruction = this.instructionTable[InstructionTable.BASE][op];
             instruction = this.instructionTable[op];
         }
         instruction.execute();
         return instruction.tstates();
     }
 
-    handleInterrupts(): void {
+    private handleInterrupts(): void {
         if (this.resetRequested && !this.handlingReset) {
             this.resetRequested = false;
             this.handlingReset = true;

@@ -14,8 +14,8 @@ export class Debugger {
         document.getElementById('pause')!.addEventListener('click', () => {
             this.pause();
         });
-        document.getElementById('continue')!.addEventListener('click', () => {
-            this.continue();
+        document.getElementById('start')!.addEventListener('click', () => {
+            this.start();
         });
         document.getElementById('mem_show')!.addEventListener('click', () => {
             this.showMemory();
@@ -26,18 +26,21 @@ export class Debugger {
     }
 
     step() {
-        this.sms.cpu.step();
+        const tstates = this.sms.cpu.step();
+        this.sms.vdp.run(tstates);
         this.update();
     }
 
     pause() {
         this.breakpoints.add(this.sms.cpu.pc);
-        cancelAnimationFrame(this.sms.animationRequest);
+        this.sms.running = false;
         this.update();
     }
 
-    continue() {
-        this.sms.cpu.step();
+    start() {
+        if (this.sms.running) return;
+        this.breakpoints.delete(this.sms.cpu.pc);
+        this.sms.running = true;
         this.sms.animationRequest = requestAnimationFrame(this.sms.runFrame)
     }
 
@@ -111,13 +114,13 @@ export class Debugger {
             const instruction = decoded.instructionConstructor(cpu, decoded.params);
             let disassembly = instruction.disassembly();
             if (disassembly.includes('NN')) {
-                disassembly = disassembly.replace('NN', toHex(cpu.next16(), 4));
+                disassembly = disassembly.replace('NN', '$' + toHex(cpu.next16(), 4));
             }
             if (disassembly.includes('N')) {
-                disassembly = disassembly.replace('N', toHex(cpu.next8(), 2));
+                disassembly = disassembly.replace('N', '$' + toHex(cpu.next8(), 2));
             }
             if (disassembly.includes('D')) {
-                disassembly = disassembly.replace('D', toHex(cpu.next8Signed(), 2));
+                disassembly = disassembly.replace('D', '$' + toHex(cpu.next8Signed(), 2));
             }
             instruction.disassembly = () => disassembly;
             instruction.address = currPc;
@@ -145,6 +148,10 @@ export class Debugger {
         this.addLi(vdpList, `address register: $${toHex(vdp.addressRegister, 4)}`);
         this.addLi(vdpList, `code register: $${toHex(vdp.codeRegister, 4)}`);
         this.addLi(vdpList, `vdp registers: ${vdp.registers.map((r, i) => i + ': $' + toHex(r, 2)).join(', ')}`);
+        this.addLi(vdpList, `vCounter: ${vdp.vCounter}, hCounter: ${vdp.hCounter}`);
+        this.addLi(vdpList, `tiles address: ${toHex((vdp.registers[2] & 0xe) << 10)}`);
+        this.addLi(vdpList, `sprites address: ${toHex((vdp.registers[5] & 0x7e) << 7)}`);
+        this.addLi(vdpList, `first command: ${vdp.firstControlByte}`);
     }
 
 }

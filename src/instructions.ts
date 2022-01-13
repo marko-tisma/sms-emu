@@ -4,11 +4,11 @@ import { AccumulatorFunction, BlockFunction, ConditionalFunction, Decoded, Instr
 import { toHex } from "./util";
 
 export const get = (
-    constructor: (cpu: Cpu, params?: any) => Instruction,
+    instructionConstructor: (cpu: Cpu, params?: any) => Instruction,
     params?: Params
 ): Decoded => {
 
-    return {instructionConstructor: constructor, params};
+    return {instructionConstructor, params};
 }
 
 export const nop = (cpu: Cpu) => {

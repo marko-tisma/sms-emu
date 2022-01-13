@@ -2,79 +2,96 @@ import { testBit } from "./util";
 
 export class Vdp {
 
-    static TSTATES_PER_SCANLINE = 228;
+    static readonly SCREEN_WIDTH = 256;
+    static screenHeight = 192;
+    private static readonly SCANLINES_PER_FRAME = 262;
+    private static readonly TSTATES_PER_SCANLINE = 228;
 
-    vram = new Uint8Array(2 ** 16);
-    cram = new Uint8Array(32);
+    private vram = new Uint8Array(2 ** 16);
+    private cram = new Uint8Array(32);
     registers = new Array<number>(11);
 
-    // canvas: HTMLCanvasElement;
-    // frameBuffer: ImageData;
-    scale = 2;
-
-    // X coordinates for current line
-    spritePositions = new Set<number>();
-
-    screenWidth = 256;
-    screenHeight = 192;
-    scanlines = 262;
+    // X coordinates for current scanline
+    private spritePositions = new Set<number>();
 
     addressRegister = 0;
-
     // Writes go to CRAM if set to 3, VRAM otherwise 
     codeRegister: 0 | 1 | 2 | 3 = 0;
 
     // Holds the current scanline
     vCounter = 0;
     hCounter = 0;
-    lineCounter = 0;
+    private lineCounter = 0;
 
-    vScrollBuffer = 0;
-    readBuffer = 0;
+    private vScrollBuffer = 0;
+    private readBuffer = 0;
 
     firstControlByte = true;
-    spriteOverflow = false;
-    spriteCollision = false;
-    frameInterruptPending = false;
-    lineInterruptPending = false;
+    private spriteOverflow = false;
+    private spriteCollision = false;
+    private frameInterruptPending = false;
+    private vCounterJumped = false;
     requestedInterrupt = false;
-    vCounterJumped = false;
 
-    constructor(private frameBuffer: Uint8ClampedArray) { }
+	canvasScale = 2;
+    imageData: ImageData;
+
+    constructor(private canvas: HTMLCanvasElement) {
+        canvas.width = Vdp.SCREEN_WIDTH * this.canvasScale;
+        canvas.height = Vdp.screenHeight * this.canvasScale;
+		const ctx = canvas.getContext('2d')!;
+		ctx.imageSmoothingEnabled = false;
+		this.imageData = ctx.createImageData(Vdp.SCREEN_WIDTH, Vdp.screenHeight);
+		this.imageData.data.fill(0xff);
+		ctx.putImageData(this.imageData, 0, 0);
+		ctx.drawImage(
+			ctx.canvas, 0, 0,
+			ctx.canvas.width * this.canvasScale,
+			ctx.canvas.height * this.canvasScale
+		);
+    }
 
     run(tstates: number) {
+        this.requestedInterrupt = false;
         this.hCounter += tstates;
         if (this.hCounter > Vdp.TSTATES_PER_SCANLINE) {
             // New scanline
             this.hCounter -= Vdp.TSTATES_PER_SCANLINE;
-            if (this.vCounter <= this.screenHeight) {
+            if (this.vCounter === Vdp.screenHeight) {
+                // Entering VBLANK area
+                this.frameInterruptPending = true;
+                const ctx = this.canvas.getContext('2d')!;
+                ctx.putImageData(this.imageData, 0, 0);
+                ctx.drawImage(
+                    ctx.canvas, 0, 0,
+                    ctx.canvas.width * 2,
+                    ctx.canvas.height * 2
+                );
+            }
+            if (this.vCounter < Vdp.screenHeight) {
                 // Active display area
-                if (this.vCounter < this.screenHeight) {
-                    this.renderSprites();
-                    this.renderTiles();
-                }
-                if (this.vCounter === this.screenHeight) {
-                    this.frameInterruptPending = true;
-                }
+                this.renderSprites();
+                this.renderTiles();
+            }
+            if (this.vCounter <= Vdp.screenHeight) {
                 if (this.lineCounter === 0) {
-                    this.lineInterruptPending = true;
+                    this.requestedInterrupt = testBit(4, this.registers[0]);
                     this.lineCounter = this.registers[10];
                 }
                 else this.lineCounter--;
             }
-            if (this.screenHeight <= this.vCounter) {
+            if (Vdp.screenHeight <= this.vCounter) {
                 // Vertical refresh
-                if (this.screenHeight !== this.vCounter) {
+                if (Vdp.screenHeight !== this.vCounter) {
                     this.lineCounter = this.registers[10];
                 }
                 this.vScrollBuffer = this.registers[9];
             }
             // Update vcounter
-            if (this.vCounter === this.scanlines) {
+            if (this.vCounter === Vdp.SCANLINES_PER_FRAME) {
                 // Next frame
                 this.vCounter = 0;
                 this.vCounterJumped = false;
-                // this.renderFrame();
             }
             else if (!this.vCounterJumped && this.vCounter === 0xda) {
                 this.vCounterJumped = true;
@@ -86,85 +103,89 @@ export class Vdp {
         if (this.frameInterruptPending && testBit(5, this.registers[1])) {
             this.requestedInterrupt = true;
         }
-        if (this.lineInterruptPending && testBit(4, this.registers[0])) {
-            this.requestedInterrupt = true;
-        }
     }
 
     renderSprites() {
-        const scanline = this.vCounter;
-        const spritesBaseAddress = (this.registers[5] & 0x7e) << 7;
-        let height = testBit(1, this.registers[1]) ? 16 : 8;
-        let width = 8;
-        if (testBit(0, this.registers[1])) {
-            // Sprites are zoomed
-            height *= 2;
-            width *= 2;
+        this.spritePositions.clear();
+        let spriteWidth = 8;
+        let spriteHeight = testBit(1, this.registers[1]) ? 16 : 8;
+        const spritesZoomed = testBit(0, this.registers[1]);
+        if (spritesZoomed) {
+            spriteHeight *= 2;
+            spriteWidth *= 2;
         }
 
+        const scanline = this.vCounter;
+        const spriteTableBaseAddress = (this.registers[5] & 0x7e) << 7;
+        const frameBuffer = this.imageData.data;
+        const frameBaseOffset = scanline * Vdp.SCREEN_WIDTH * 4;
         let spritesRendered = 0;
-        const baseFrameAddress = scanline * 256 * 4;
+
         for (let spriteNumber = 0; spriteNumber < 64; spriteNumber++) {
-            const y = this.vram[spritesBaseAddress + spriteNumber] + 1;
-            if (scanline <= y && y < scanline + height) {
-                if (this.screenHeight === 192 && y === 0xd0) break;
+            const spriteY = this.vram[spriteTableBaseAddress + spriteNumber] + 1;
+            if (Vdp.screenHeight === 192 && spriteY === 0xd1) break;
+
+            if (spriteY <= scanline && scanline < spriteY + spriteHeight) {
                 if (spritesRendered === 8) {
                     this.spriteOverflow = true;
                     break;
                 }
                 spritesRendered++;
 
-                let address = spritesBaseAddress + spriteNumber * 2;
-                let x = this.vram[address | 0x80];
-                if (testBit(3, this.registers[0])) x -= 8;
-                let patternLine = y - scanline;
-                if (width === 16) {
+                let tableAddress = spriteTableBaseAddress + spriteNumber * 2;
+                let spriteX = this.vram[tableAddress | 0x80];
+                if (testBit(3, this.registers[0])) spriteX -= 8;
+
+                let patternLine = scanline - spriteY;
+                if (spriteWidth === 16) {
                     patternLine = Math.floor(patternLine / 2);
                 }
-                let patternIndex = this.vram[address | 0x81];
+                let patternIndex = this.vram[tableAddress | 0x81];
                 if (testBit(1, this.registers[1])) {
                     patternIndex = patternLine <= 7 ? patternIndex & 0xfe : patternIndex | 1;
                 }
                 patternLine &= 7;
-                if (testBit(2, this.registers[6])) patternIndex += 256;
 
+                if (testBit(2, this.registers[6])) patternIndex += 256;
                 let patternAddress = patternIndex * 32 + patternLine * 4;
                 let bitplanes = this.vram.slice(patternAddress, patternAddress + 4);
-                if (width === 16) {
-                    // Stretch bitplanes to 16 pixels
+                if (spriteWidth === 16) {
+                    // Stretch bitplanes from 8 to 16 pixels
                     bitplanes = bitplanes.map(bp => {
                         let stretched = 0;
                         let mask = 1;
-                        for (let i = 0; i < 8; i++) {
-                            stretched |= (bp & mask) << (i * 2);
-                            stretched |= (bp & mask) << (i * 2 + 1);
+                        for (let pixel = 0; pixel < 8; pixel++) {
+                            stretched |= (bp & mask) << (pixel * 2);
+                            stretched |= (bp & mask) << (pixel * 2 + 1);
                             mask <<= 1;
                         }
                         return stretched;
                     });
                 }
 
-                for (let pixel = 0; pixel < width; pixel++) {
-                    if (this.spritePositions.has(x + pixel)) {
+                for (let pixel = 0; pixel < spriteWidth; pixel++) {
+                    if (this.spritePositions.has(spriteX + pixel)) {
                         this.spriteCollision = true;
                         continue;
                     }
-                    this.spritePositions.add(x + pixel);
-                    if (x + pixel < 0) continue;
-                    if (x + pixel >= this.screenWidth) break;
+                    if (spriteX + pixel < 0) continue;
+                    if (spriteX + pixel >= Vdp.SCREEN_WIDTH) break;
 
-                    const mask = width === 16 ? 0x8000 >> pixel : 0x80 >> pixel;
-                    const shift = width - pixel - 1;
+                    const mask = spriteWidth === 16 ? 0x8000 >> pixel : 0x80 >> pixel;
+                    const shift = spriteWidth - pixel - 1;
+                    // const mask = 0x80 >>> pixel;
+                    // const shift = 7 - pixel;
                     let colorIndex = 0;
                     for (let bp = 0; bp < 4; bp++) {
-                        colorIndex |= ((bitplanes[bp] & mask) >>> shift) << bp;
+                        colorIndex |= ((bitplanes[bp] & mask) << bp) >>> shift;
                     }
+                    if (colorIndex !== 0) this.spritePositions.add(spriteX + pixel);
                     const [r, g, b] = this.interpolateColor(this.cram[16 + colorIndex]);
-                    const frameAddress = baseFrameAddress + ((x + pixel) * 4);
-                    this.frameBuffer[frameAddress] = r;
-                    this.frameBuffer[frameAddress + 1] = g;
-                    this.frameBuffer[frameAddress + 2] = b;
-                    this.frameBuffer[frameAddress + 3] = 0xff;
+                    const frameAddress = frameBaseOffset + ((spriteX + pixel) * 4);
+                    frameBuffer[frameAddress] = r;
+                    frameBuffer[frameAddress + 1] = g;
+                    frameBuffer[frameAddress + 2] = b;
+                    frameBuffer[frameAddress + 3] = colorIndex === 0 ? 0 : 0xff;
                 }
             }
         }
@@ -180,7 +201,8 @@ export class Vdp {
         let tileRow = (startRow + row) % 28;
 
         const tilesBaseAddress = (this.registers[2] & 0xe) << 10;
-        const frameBaseOffset = scanline * 256 * 4;
+        const frameBuffer = this.imageData.data;
+        const frameBaseOffset = (scanline - vFineScroll) * Vdp.SCREEN_WIDTH * 4;
 
         for (let col = 0; col < 32; col++) {
             let tileCol = (startCol + col) & 31;
@@ -195,12 +217,9 @@ export class Vdp {
                 vFineScroll = 0;
             }
 
-            let patternLine = (scanline & 7) + vFineScroll;
-            if (patternLine > 7) {
-                patternLine &= 7;
-                tileRow = (tileRow + 1) % 28;
-            }
+            let patternLine = (scanline & 7);
             let tileEntryAddress = tilesBaseAddress + (tileRow * 64) + (tileCol * 2);
+            if (!testBit(0, this.registers[2])) tileEntryAddress &= 0xfbff;
             const lsb = this.vram[tileEntryAddress];
             const msb = this.vram[tileEntryAddress + 1];
             const palette = +testBit(3, msb);
@@ -214,8 +233,8 @@ export class Vdp {
             // Pattern line bitplanes
             const bitplanes = this.vram.slice(patternAddress, patternAddress + 4);
             for (let pixel = 0; pixel < 8; pixel++) {
-                const x = col * 8 + pixel //+ hFineScroll;
-                if (x >= this.screenWidth) break;
+                const x = col * 8 + pixel + hFineScroll;
+                if (x >= Vdp.SCREEN_WIDTH) break;
 
                 // Shift out bitplanes
                 const mask = hFlip ? 1 << pixel : 0x80 >>> pixel;
@@ -227,12 +246,22 @@ export class Vdp {
                 const [r, g, b] = this.interpolateColor(this.cram[colorIndex + palette * 16]);
 
                 const frameOffset = frameBaseOffset + x * 4;
+
                 if (priority || !this.spritePositions.has(x)) {
-                    this.frameBuffer[frameOffset] = r;
-                    this.frameBuffer[frameOffset + 1] = g;
-                    this.frameBuffer[frameOffset + 2] = b;
-                    this.frameBuffer[frameOffset + 3] = 0xff;
+                    frameBuffer[frameOffset] = r;
+                    frameBuffer[frameOffset + 1] = g;
+                    frameBuffer[frameOffset + 2] = b;
+                    frameBuffer[frameOffset + 3] = 0xff;
                 }
+            }
+        }
+        if (testBit(5, this.registers[0])) {
+            const [r, g, b] = this.interpolateColor(this.cram[this.registers[7]]);
+            for (let pixel = 0; pixel < 8; pixel++) {
+                frameBuffer[frameBaseOffset + pixel * 4] = r; 
+                frameBuffer[frameBaseOffset + pixel * 4 + 1] = g; 
+                frameBuffer[frameBaseOffset + pixel * 4 + 2] = b; 
+                frameBuffer[frameBaseOffset + pixel * 4 + 3] = 0xff; 
             }
         }
     }
@@ -241,7 +270,7 @@ export class Vdp {
         const r = color & 3;
         const g = (color >> 2) & 3;
         const b = (color >> 4) & 3;
-        return [r << 5, g << 5, b << 5];
+        return [r << 7, g << 7, b << 7];
     }
 
     readControlPort() {
@@ -251,7 +280,6 @@ export class Vdp {
             +this.spriteCollision << 5;
         this.firstControlByte = true;
         this.frameInterruptPending = false;
-        this.lineInterruptPending = false;
         this.spriteCollision = false;
         this.spriteOverflow = false;
         return status;
