@@ -78,7 +78,7 @@ export class Bus {
             this.frame2RamPage = (value & 0x04) >>> 2; 
         }
         else if (address < Bus.MEM_SIZE) {
-            this.framePages[address - Bus.FRAME_0_FCR] = value & 0xff;
+            this.framePages[address - Bus.FRAME_0_FCR] = value & 0x3f;
         }
     }
 
