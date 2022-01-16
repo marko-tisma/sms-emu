@@ -40,24 +40,35 @@ export class Sms {
 	static TSTATES_PER_FRAME = 59736;
 
 	cpu: Cpu;
+	bus: Bus;
 	vdp: Vdp;
 	debugger: Debugger;
 
 	animationRequest = 0;
 	running = false;
 
+	canvas: HTMLCanvasElement;
+
+	keyMask = 0xff;
+	tstatesFromLastFrame = 0;
+
 	constructor(rom: Uint8Array) {
-		this.vdp = new Vdp(document.querySelector('#screen')!);
-		const bus = new Bus(new Cartridge(rom), this.vdp);
-		this.cpu = new Cpu(bus);
+		this.canvas = document.querySelector('#screen')!;
+		this.vdp = new Vdp(this.canvas);
+		this.bus = new Bus(new Cartridge(rom), this.vdp);
+		this.cpu = new Cpu(this.bus);
 		this.debugger = new Debugger(this);
 		this.debugger.breakpoints.add(0);
 		this.running = true;
+		this.initKeyListeners();
+		this.bus.out(0xdc, this.keyMask);
+		this.bus.out(0xdd, this.keyMask);
+		this.bus.out(0x3e, 0xc0);
 	}
 
 	runFrame = (timestamp: DOMHighResTimeStamp) => {
 		if (!this.running) return;
-		let tstatesElapsed = 0;
+		let tstatesElapsed = this.tstatesFromLastFrame;
 		while (tstatesElapsed < Sms.TSTATES_PER_FRAME) {
 			if (this.debugger.breakpoints.has(this.cpu.pc)) {
 				this.running = false;
@@ -66,9 +77,75 @@ export class Sms {
 			}
 			const tstates = this.cpu.step();
 			tstatesElapsed += tstates;
-			this.vdp.run(tstates);
+			this.vdp.runOld(tstates);
 		}
-		console.log(`elapsed: ${performance.now() - timestamp}`);
+		this.tstatesFromLastFrame = tstatesElapsed - Sms.TSTATES_PER_FRAME;
+		const fps = 1000 / Math.max(1000 / 60, performance.now() - timestamp);
+		document.querySelector('#fps')!.innerHTML = `FPS: ${fps.toString().substring(0, 5)}`;
+		// console.log(`elapsed: ${performance.now() - timestamp}`);
 		this.animationRequest = requestAnimationFrame(this.runFrame);
+	}
+
+	initKeyListeners() {
+		document.addEventListener('keydown', (e) => {
+			switch (e.key) {
+				case 'ArrowUp':
+				case 'w':
+					this.keyMask &= ~1;
+					break;
+				case 'ArrowDown':
+				case 's':
+					this.keyMask &= ~2;
+					break;
+				case 'ArrowLeft':
+				case 'a':
+					this.keyMask &= ~4;
+					break;
+				case 'ArrowRight':
+				case 'd':
+					this.keyMask &= ~8;
+					break;
+				case 'x':
+				case ' ':
+					this.keyMask &= ~16;
+					break;
+				case 'z':
+					this.keyMask &= ~32;
+					break;
+				default:
+					break;
+			}
+			this.bus.out(0xdc, this.keyMask);
+		});
+		document.addEventListener('keyup', (e) => {
+			switch (e.key) {
+				case 'ArrowUp':
+				case 'w':
+					this.keyMask |= 1;
+					break;
+				case 'ArrowDown':
+				case 's':
+					this.keyMask |= 2;
+					break;
+				case 'ArrowLeft':
+				case 'a':
+					this.keyMask |= 4;
+					break;
+				case 'ArrowRight':
+				case 'd':
+					this.keyMask |= 8;
+					break;
+				case 'x':
+				case ' ':
+					this.keyMask |= 16;
+					break;
+				case 'z':
+					this.keyMask |= 32;
+					break;
+				default:
+					break;
+			}
+			this.bus.out(0xdc, this.keyMask);
+		});
 	}
 }
