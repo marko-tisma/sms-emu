@@ -1,7 +1,6 @@
-import { decode, decodeBase, registerPairs } from "../decoder";
-import { Instruction } from "../decoder";
+import { decode, Instruction, registerPairs } from "../decoder";
+import { toHex } from "../util";
 import { Sms } from "./sms";
-import { toHex, testBit } from "../util";
 
 export class Debugger {
 
@@ -35,12 +34,14 @@ export class Debugger {
         this.breakpoints.add(this.sms.cpu.pc);
         this.sms.running = false;
         this.update();
+        this.showDebug();
     }
 
     start() {
         if (this.sms.running) return;
         this.breakpoints.delete(this.sms.cpu.pc);
         this.sms.running = true;
+        this.hideDebug();
         this.sms.animationRequest = requestAnimationFrame(this.sms.runFrame)
     }
 
@@ -48,7 +49,7 @@ export class Debugger {
         const input = document.getElementById('mem_addr')! as HTMLInputElement;
         const address = parseInt(input.value, 16);
         if (!isNaN(address)) {
-            const bytes = this.sms.cpu.bus.readn(address, 10);
+            const bytes = this.sms.cpu.bus.readn(address, 16);
             const text = `${toHex(address, 4)}: ${bytes.map(b => `$${toHex(b, 2)}`).join(', ')}`;
             const list = document.getElementById('mem')! as HTMLUListElement;
             this.addLi(list, text);
@@ -95,19 +96,40 @@ export class Debugger {
         }
     }
 
+    updateState() {
+        const cpu = this.sms.cpu;
+        const cpuList = document.getElementById('cpu')! as HTMLUListElement;
+        cpuList.innerHTML = '';
+
+        let text = registerPairs.map(rp => `${rp}: $${toHex(cpu[rp], 4)}`).join(', ');
+        this.addLi(cpuList, text);
+        this.addLi(cpuList, `(hl): $${toHex(cpu['(hl)'], 2)}, (hl + 1): $${toHex(cpu.bus.read8(cpu.hl + 1), 2)}`);
+
+        text = Object.keys(cpu.flags).map(f => `${f}: ${cpu.flags[f]}`).join(', ');
+        this.addLi(cpuList, text);
+        this.addLi(cpuList, `imode: ${cpu.interruptMode}`);
+
+        const vdpList = document.getElementById('vdp')! as HTMLUListElement;
+        const vdp = this.sms.cpu.bus.vdp;
+        vdpList.innerHTML = '';
+        this.addLi(vdpList, `address register: $${toHex(vdp.addressRegister, 4)}`);
+        this.addLi(vdpList, `code register: $${toHex(vdp.codeRegister, 4)}`);
+        this.addLi(vdpList, `vdp registers: ${vdp.registers.map((r, i) => i + ': $' + toHex(r, 2)).join(', ')}`);
+        this.addLi(vdpList, `vCounter: ${vdp.vCounter}, hCounter: ${vdp.hCounter}`);
+    }
+
     addLi(list: HTMLUListElement, text: string) {
         const li = document.createElement('li');
         li.appendChild(document.createTextNode(text));
         list.appendChild(li);
     }
 
-    decodeNextInstructions(count: number, start?: number): Instruction[] {
+    decodeNextInstructions(count: number): Instruction[] {
         const cpu = this.sms.cpu;
+        const startTstates = cpu.tstates;
         let startPc = cpu.pc;
-        if (start) {
-            cpu.pc = start;
-        }
         const instructions = [];
+
         for (let i = 0; i < count; i++) {
             const currPc = cpu.pc;
             let decoded = decode(cpu.next8(), cpu);
@@ -126,32 +148,12 @@ export class Debugger {
             instruction.address = currPc;
             instructions.push(instruction);
         }
+
         cpu.pc = startPc;
+        cpu.tstates = startTstates;
         return instructions;
     }
 
-    updateState() {
-        const cpu = this.sms.cpu;
-        const cpuList = document.getElementById('cpu')! as HTMLUListElement;
-        cpuList.innerHTML = '';
 
-        let text = registerPairs.map(rp => `${rp}: $${toHex(cpu[rp], 4)}`).join(', ');
-        this.addLi(cpuList, text);
-        this.addLi(cpuList, `(hl): $${toHex(cpu['(hl)'], 2)}, (hl + 1): $${toHex(cpu.bus.read8(cpu.hl + 1), 2)}`);
-
-        text = Object.keys(cpu.flags).map(f => `${f}: ${cpu.flags[f]}`).join(', ');
-        this.addLi(cpuList, text);
-
-        const vdpList = document.getElementById('vdp')! as HTMLUListElement;
-        const vdp = this.sms.cpu.bus.vdp;
-        vdpList.innerHTML = '';
-        this.addLi(vdpList, `address register: $${toHex(vdp.addressRegister, 4)}`);
-        this.addLi(vdpList, `code register: $${toHex(vdp.codeRegister, 4)}`);
-        this.addLi(vdpList, `vdp registers: ${vdp.registers.map((r, i) => i + ': $' + toHex(r, 2)).join(', ')}`);
-        this.addLi(vdpList, `vCounter: ${vdp.vCounter}, hCounter: ${vdp.hCounter}`);
-        this.addLi(vdpList, `tiles address: ${toHex((vdp.registers[2] & 0xe) << 10)}`);
-        this.addLi(vdpList, `sprites address: ${toHex((vdp.registers[5] & 0x7e) << 7)}`);
-        this.addLi(vdpList, `first command: ${vdp.firstControlByte}`);
-    }
 
 }

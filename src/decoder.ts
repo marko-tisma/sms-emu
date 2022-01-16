@@ -40,7 +40,7 @@ export interface Params {
 }
 
 export interface Instruction {
-    tstates: () => number,
+    // tstates: () => number,
     execute: () => void,
     disassembly: () => string,
     address?: number
@@ -94,16 +94,39 @@ export const decode = (op: number, cpu: Cpu): Decoded => {
     switch (op) {
         case 0xed: return decodeEd(cpu.next8());
         case 0xcb: return decodeCb(cpu.next8());
-        case 0xdd:
+        case 0xdd: {
             op = cpu.next8();
             if (op === 0xcb) return decodeIdxcb(cpu.bus.read8(cpu.pc + 1), 'ix');
-            return decodeIdx(op, 'ix');
-        case 0xfd:
+            const decoded = decodeIdx(op, 'ix');
+            cpu.tstates += calculateExtraTstates(decoded); 
+            return decoded;
+        }
+        case 0xfd: {
             op = cpu.next8();
             if (op === 0xcb) return decodeIdxcb(cpu.bus.read8(cpu.pc + 1), 'iy');
-            return decodeIdx(op, 'iy');
+            const decoded = decodeIdx(op, 'iy');
+            cpu.tstates += calculateExtraTstates(decoded);
+            return decoded;
+        }
         default: return decodeBase(op);
     }
+}
+
+// Need to add extra tstates to index instructions because they use the same 
+// decoder as the base instructions
+export const calculateExtraTstates = (decoded: Decoded): number => {
+    const params = decoded.params;
+    let tstatesToAdd = 0;
+    if (params) {
+        const regParams = ['src', 'dst', 'rp', 'rs'];
+        regParams.map(p => {
+            if (params[p]) {
+                if ((params[p] as string).startsWith('i')) tstatesToAdd = 4;
+                if ((params[p] as string).startsWith('(i')) tstatesToAdd = 12;
+            }
+        });
+    }
+    return tstatesToAdd;
 }
 
 export const decodeBase = (op: number): Decoded => {
@@ -249,7 +272,13 @@ export const decodeEd = (op: number): Decoded => {
         }
     }
     if (x === 2) {
-        if (z <= 3 && y >= 4) return get(ins.bl_i, { bli: bli[y][z] });
+        if (z <= 3 && y >= 4) {
+            if (y >= 6) {
+                if (z >= 2) return get(ins.block_io, {bli: bli[y][z]});
+                return get(ins.block_load, {bli: bli[y][z]});
+            }
+            return get(ins.block_single, {bli: bli[y][z]});
+        }
         return get(ins.noni);
     }
     return get(ins.nop);
@@ -273,11 +302,13 @@ export const decodeIdx = (op: number, idx: 'ix' | 'iy'): Decoded => {
     }
 
     const decoded = decodeBase(op);
+
     rp[2] = 'hl';
     rp2[2] = 'hl';
     rs[4] = 'h';
     rs[5] = 'l';
     rs[6] = '(hl)';
+
     return decoded;
 }
 

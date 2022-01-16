@@ -1,5 +1,5 @@
 import { Cpu } from "./cpu";
-import { Instruction, decodeBase, decodeEd, decodeCb, decodeIdx, decodeIdxcb, Decoded, BlockFunction } from "./decoder";
+import { Instruction, decodeBase, decodeEd, decodeCb, decodeIdx, decodeIdxcb, Decoded, BlockFunction, calculateExtraTstates } from "./decoder";
 
 export const generateInstructionTable = (cpu: Cpu): Instruction[] => {
     const baseTable = new Array<Instruction>(256);
@@ -21,47 +21,37 @@ export const generateInstructionTable = (cpu: Cpu): Instruction[] => {
     }
 
     baseTable[0xed] = {
-        tstates: () => 0,
         execute: () => {
-            const instruction = edTable[cpu.next8()];
-            instruction.execute();
-            baseTable[0xed].tstates = instruction.tstates;
+            edTable[cpu.next8()].execute();
         },
         disassembly: () => ''
     }
 
     baseTable[0xcb] = {
-        tstates: () => 0,
         execute: () => {
-            const instruction = cbTable[cpu.next8()];
-            instruction.execute();
-            baseTable[0xcb].tstates = instruction.tstates;
+            cbTable[cpu.next8()].execute();
         },
         disassembly: () => ''
     }
 
     baseTable[0xdd] = {
-        tstates: () => 0,
         execute: () => {
             const op = cpu.next8();
             let instruction;
             if (op === 0xcb) instruction = ixcbTable[cpu.bus.read8(cpu.pc + 1)];
             else instruction = ixTable[op];
             instruction.execute();
-            baseTable[0xdd].tstates = instruction.tstates;
         },
         disassembly: () => ''
     }
 
     baseTable[0xfd] = {
-        tstates: () => 0,
         execute: () => {
             const op = cpu.next8();
             let instruction;
             if (op === 0xcb) instruction = iycbTable[cpu.bus.read8(cpu.pc + 1)];
             else instruction = iyTable[op];
             instruction.execute();
-            baseTable[0xfd].tstates = instruction.tstates;
         },
         disassembly: () => ''
     }
@@ -79,28 +69,11 @@ const rewriteInstruction = (cpu: Cpu, {instructionConstructor, params}: Decoded)
 
     const instruction = instructionConstructor(cpu, params);
 
-    let tstatesBody = instruction.tstates.toString();
-    tstatesBody = tstatesBody.slice(tstatesBody.indexOf('>') + 1);
-    let tstatesToAdd = 0;
-    if (params) {
-        // Add tstates if index instruction which was constructed from base instruction
-        const regParams = ['src', 'dst', 'rp', 'rs'];
-        regParams.map(p => {
-            if (params[p]) {
-                if ((params[p] as string).startsWith('i')) tstatesToAdd = 4;
-                if ((params[p] as string).startsWith('(i')) tstatesToAdd = 12;
-            }
-        });
-    }
-    tstatesBody = `return ${tstatesToAdd} + (${tstatesBody})`;
-
     let executeBody = instruction.execute.toString();
     executeBody = executeBody.slice(
         executeBody.indexOf('{') + 1, executeBody.lastIndexOf('}')
     );
-
     executeBody = executeBody.replaceAll(cpuVar, 'this');
-    tstatesBody = tstatesBody.replaceAll(cpuVar, 'this');
 
     // Hardcode parameters
     if (params) {
@@ -108,9 +81,6 @@ const rewriteInstruction = (cpu: Cpu, {instructionConstructor, params}: Decoded)
         stringParams.map(param => {
             if (params[param]) {
                 executeBody = executeBody.replaceAll(
-                    `${paramsVar}.${param}`, `'${params[param]}'`
-                );
-                tstatesBody = tstatesBody.replaceAll(
                     `${paramsVar}.${param}`, `'${params[param]}'`
                 );
             }
@@ -131,18 +101,6 @@ const rewriteInstruction = (cpu: Cpu, {instructionConstructor, params}: Decoded)
                 );
             }
         });
-
-        if (params.bli) {
-            tstatesBody = tstatesBody.replaceAll(
-                `${paramsVar}.bli.fname`,
-                `'${(params.bli as BlockFunction).fname}'`
-            );
-        }
-        if (params.cc) {
-            tstatesBody = tstatesBody.replaceAll(
-                `${paramsVar}.cc`, `(${params.cc})`
-            );
-        }
     }
 
     if (executeBody.includes('RegisterName')) {
@@ -161,7 +119,8 @@ const rewriteInstruction = (cpu: Cpu, {instructionConstructor, params}: Decoded)
             );
         }
     }
+    let tstatesToAdd = calculateExtraTstates({instructionConstructor, params});
+    executeBody += `;this.tstates += ${tstatesToAdd};`
     instruction.execute = Function(executeBody).bind(cpu);
-    instruction.tstates = Function(tstatesBody).bind(cpu);
     return instruction;
 }

@@ -73,6 +73,8 @@ export class Cpu {
     alu = alu;
     RegisterName = RegisterName;
 
+    tstates = 0;
+
     constructor(public bus: Bus) {
         this.registers = Array.from({length: 8}, () => new Register(1));
         this.shadowRegisters = Array.from({length: 8}, () => new Register(1));
@@ -83,6 +85,7 @@ export class Cpu {
     }
 
     step(): number {
+        this.tstates = 0;
         this.handleInterrupts();
         if (this.halted) return 4;
         if (this.eiRequested) {
@@ -101,7 +104,7 @@ export class Cpu {
             instruction = this.instructionTable[op];
         }
         instruction.execute();
-        return instruction.tstates();
+        return this.tstates;
     }
 
     private handleInterrupts(): void {
