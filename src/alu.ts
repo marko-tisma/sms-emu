@@ -2,7 +2,7 @@ import { Cpu } from "./cpu"
 
 export const parity = (value: number) => {
     let parity = 0;
-    while(value) {
+    while (value) {
         parity ^= value & 1;
         value >>>= 1;
     }
@@ -81,6 +81,7 @@ export const dec8 = (cpu: Cpu, value: number) => {
     cpu.flags.n = true;
     return result & 0xff;
 }
+
 export const rlc = (cpu: Cpu, value: number) => {
     const msb = value >>> 7;
     const result = ((value << 1) | msb) & 0xff;
@@ -106,7 +107,6 @@ export const rrc = (cpu: Cpu, value: number) => {
     return result;
 }
 rrc.fname = 'rrc';
-
 
 export const rl = (cpu: Cpu, value: number) => {
     const msb = value >>> 7;
@@ -202,7 +202,7 @@ export const ldir = (cpu: Cpu) => {
     if (cpu.bc > 0) {
         cpu.pc -= 2;
         return false;
-    } 
+    }
     return true;
 }
 ldir.fname = 'ldir';
@@ -223,7 +223,7 @@ export const lddr = (cpu: Cpu) => {
     if (cpu.bc > 0) {
         cpu.pc -= 2;
         return false;
-    } 
+    }
     return true;
 }
 lddr.fname = 'lddr';
@@ -279,7 +279,7 @@ export const ini = (cpu: Cpu) => {
 ini.fname = 'ini';
 
 export const inir = (cpu: Cpu) => {
-    ini(cpu); 
+    ini(cpu);
     cpu.flags.z = true;
     if (cpu.b === 0) {
         return true;

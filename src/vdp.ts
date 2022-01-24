@@ -7,11 +7,10 @@ export interface BackgroundTile {
     horizontalFlip: boolean,
     verticalFlip: boolean
 }
-
 // Video display processor
 export class Vdp {
 
-	// Timing information taken from https://www.smspower.org/forums/8161-SMSDisplayTiming
+    // Timing information taken from https://www.smspower.org/forums/8161-SMSDisplayTiming
     static readonly SCANLINES_PER_FRAME = 262;
     static readonly TSTATES_PER_SCANLINE = 228;
 
@@ -104,11 +103,11 @@ export class Vdp {
     generateInterrupts() {
         this.requestedInterrupt = false;
         if (this.vCounter <= this.heightPixels) {
-           if (this.lineCounter === 0) {
-               this.lineInterruptPending = true;
-               this.lineCounter = this.registers[10];
-           }
-           else this.lineCounter--;
+            if (this.lineCounter === 0) {
+                this.lineInterruptPending = true;
+                this.lineCounter = this.registers[10];
+            }
+            else this.lineCounter--;
         }
         if (this.vCounter === this.heightPixels) {
             this.frameInterruptPending = true;
@@ -120,64 +119,6 @@ export class Vdp {
             this.requestedInterrupt = true;
         }
     }
-
-    // runOld(tstates: number) {
-    //     this.requestedInterrupt = false;
-    //     this.hCounter += tstates;
-    //     if (this.hCounter > Vdp.TSTATES_PER_SCANLINE) {
-    //         // New scanline
-    //         this.hCounter -= Vdp.TSTATES_PER_SCANLINE;
-    //         if (this.vCounter === this.heightPixels) {
-    //             // Entering VBLANK area
-    //             this.frameInterruptPending = true;
-    //             if (this.displayEnabled()) {
-    //                 this.drawFrame();
-    //             }
-    //         }
-    //         if (this.vCounter <= this.heightPixels) {
-    //             if (this.lineCounter === 0) {
-    //                 this.lineInterruptPending = true;
-    //                 // this.requestedInterrupt = this.lineInterruptPending && testBit(4, this.registers[0]);
-    //                 this.lineCounter = this.registers[10];
-    //             }
-    //             else this.lineCounter--;
-    //         }
-
-    //         if (this.vCounter < this.heightPixels) {
-    //             // Active display area
-    //             this.renderSprites();
-    //             this.renderTiles();
-    //         }
-
-    //         if (this.heightPixels <= this.vCounter) {
-    //             // Vertical refresh
-    //             if (this.heightPixels !== this.vCounter) {
-    //                 this.lineCounter = this.registers[10];
-    //             }
-    //             this.vScrollBuffer = this.registers[9];
-    //         }
-
-    //         // Update vcounter
-    //         if (this.vCounter === 0xff) {
-    //             // Next frame
-    //             this.vCounter = 0;
-    //             this.vCounterJumped = false;
-    //         }
-    //         else if (!this.vCounterJumped && this.vCounter === 0xda) {
-    //             this.vCounterJumped = true;
-    //             this.vCounter = 0xd5;
-    //         }
-    //         else this.vCounter++;
-    //     }
-
-    //     if (this.frameInterruptPending && testBit(5, this.registers[1])) {
-    //         this.requestedInterrupt = true;
-    //     }
-    //     if (this.lineInterruptPending && testBit(4, this.registers[0])) {
-    //         this.requestedInterrupt = true;
-    //     }
-
-    // }
 
     renderSprites() {
         this.renderedSpritePositions.clear();
@@ -311,7 +252,7 @@ export class Vdp {
                 const frameOffset = frameBaseOffset + x * 4;
 
                 if (!this.renderedSpritePositions.has(x) || (tile.priority && colorIndex !== 0)) {
-                // if (tile.priority || !this.renderedSpritePositions.has(x)) {
+                    // if (tile.priority || !this.renderedSpritePositions.has(x)) {
                     if (tile.priority && this.renderedSpritePositions.has(x) && colorIndex === 0) continue;
                     frameBuffer[frameOffset] = r;
                     frameBuffer[frameOffset + 1] = g;
