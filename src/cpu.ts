@@ -1,9 +1,8 @@
 import * as alu from "./alu";
 import { Bus } from "./bus";
-import { decode, decodeBase, decodeCb, decodeEd, decodeIdx, decodeIdxcb, InterruptMode } from "./decoder";
-import { Instruction } from "./decoder";
-import { generateInstructionTable } from "./table_generator";
+import { decode, Instruction, InterruptMode } from "./decoder";
 import { Register } from "./register";
+import { generateInstructionTable } from "./table_generator";
 import { toSigned } from "./util";
 
 export enum RegisterName {
@@ -13,6 +12,9 @@ export enum RegisterName {
 enum DecodingMode {
     TABLE, DECODE
 }
+
+// Zilog Z80 CPU
+// Reference: http://www.zilog.com/docs/z80/um0080.pdf 
 export class Cpu {
 
     // 8 bit general registers
@@ -21,16 +23,15 @@ export class Cpu {
     // Shadow registers are swapped with general registers after the EXX instruction is executed
     shadowRegisters: Register[];
 
-    private _sp = new Register(2);
-    private _pc = new Register(2);
-
     // Index registers
     private _ix = new Register(2);
     private _iy = new Register(2);
-
     private _i = new Register(1);
 
-    flags: {[key: string]: boolean} = {
+    private _sp = new Register(2);
+    private _pc = new Register(2);
+
+    flags: { [key: string]: boolean } = {
         s: false,
         z: false,
         y: false,
@@ -41,7 +42,7 @@ export class Cpu {
         c: false,
     }
 
-    shadowFlags: {[key: string]: boolean} = {
+    shadowFlags: { [key: string]: boolean } = {
         s: false,
         z: false,
         y: false,
@@ -52,33 +53,39 @@ export class Cpu {
         c: false,
     }
 
+    // Number of CPU cycles for the current executing instruction
+    tstates = 0;
     halted = false;
-
     interruptMode: InterruptMode = 1;
+
     // Last instruction was enable interrupts
     eiRequested = false;
+
     // Pause was pressed
     resetRequested = false;
     handlingReset = false;
+
     // Enable maskable interrupts flag
     iff1 = false;
-    // Temp storage for iff1 during nonmaskable interrupt
+
+    // Temp storage for iff1 during non-maskable interrupt
     iff2 = false;
 
     // Table mode trades off using more memory for better execution time
     decodingMode = DecodingMode.TABLE;
     instructionTable: Instruction[] = [];
 
-    // Functions in table mode are scoped to cpu object so they need these
+    // Instruction functions in table mode are scoped to cpu object so they need these
     alu = alu;
     RegisterName = RegisterName;
 
-    tstates = 0;
-
     constructor(public bus: Bus) {
-        this.registers = Array.from({length: 8}, () => new Register(1));
-        this.shadowRegisters = Array.from({length: 8}, () => new Register(1));
+        this.registers = Array.from({ length: 8 }, () => new Register(1));
+        this.shadowRegisters = Array.from({ length: 8 }, () => new Register(1));
         this.sp = 0xdff0;
+        this.bus.out(0xdc, 0xff);
+        this.bus.out(0xdd, 0xff);
+        this.bus.out(0x3e, 0xc0);
         if (this.decodingMode === DecodingMode.TABLE) {
             this.instructionTable = generateInstructionTable(this);
         }
@@ -86,6 +93,7 @@ export class Cpu {
 
     step(): number {
         this.tstates = 0;
+
         this.handleInterrupts();
         if (this.halted) return 4;
         if (this.eiRequested) {
@@ -104,6 +112,7 @@ export class Cpu {
             instruction = this.instructionTable[op];
         }
         instruction.execute();
+
         return this.tstates;
     }
 
@@ -116,14 +125,14 @@ export class Cpu {
             this.halted = false;
             this.push16(this.pc);
             this.pc = 0x66;
+            this.tstates += 13;
         }
-        else if (this.bus.vdp.requestedInterrupt) {
-            if (this.iff1 && this.interruptMode === 1) {
-                this.iff1 = this.iff2 = false;
-                this.halted = false;
-                this.push16(this.pc);
-                this.pc = 0x38;
-            }
+        else if (this.iff1 && this.bus.vdp.requestedInterrupt) {
+            this.iff1 = this.iff2 = false;
+            this.halted = false;
+            this.push16(this.pc);
+            this.pc = this.interruptMode === 1 ? 0x38 : this.i << 8;
+            this.tstates += 13;
         }
     }
 
@@ -150,8 +159,7 @@ export class Cpu {
     }
 
     next8Signed(): number {
-        let byte = this.bus.read8(this.pc++);
-        return toSigned(byte);
+        return toSigned(this.next8());
     }
 
     next16(): number {
@@ -164,21 +172,21 @@ export class Cpu {
 
     set i(value: number) { this._i.value = value; }
 
-    get ['(ix + d)'] (): number { return this.bus.read8(this.ix + this.next8Signed()) }
+    get ['(ix + d)'](): number { return this.bus.read8(this.ix + this.next8Signed()) }
 
-    set ['(ix + d)'] (value: number) { this.bus.write8(this.ix + this.next8Signed(), value) }
+    set ['(ix + d)'](value: number) { this.bus.write8(this.ix + this.next8Signed(), value) }
 
-    get ['(iy + d)'] (): number { return this.bus.read8(this.iy + this.next8Signed()) }
+    get ['(iy + d)'](): number { return this.bus.read8(this.iy + this.next8Signed()) }
 
-    set ['(iy + d)'] (value: number) { this.bus.write8(this.iy + this.next8Signed(), value) }
+    set ['(iy + d)'](value: number) { this.bus.write8(this.iy + this.next8Signed(), value) }
 
-    get ['(ix)'] (): number { return this.bus.read8(this.ix) }
+    get ['(ix)'](): number { return this.bus.read8(this.ix) }
 
-    set ['(ix)'] (value: number) { this.bus.write8(this.ix, value) }
+    set ['(ix)'](value: number) { this.bus.write8(this.ix, value) }
 
-    get ['(iy)'] (): number { return this.bus.read8(this.iy) }
+    get ['(iy)'](): number { return this.bus.read8(this.iy) }
 
-    set ['(iy)'] (value: number) { this.bus.write8(this.iy, value) }
+    set ['(iy)'](value: number) { this.bus.write8(this.iy, value) }
 
     get ix(): number { return this._ix.value; }
 
@@ -190,23 +198,23 @@ export class Cpu {
 
     get ixh(): number { return this._ix.value >>> 8; }
 
-    set ixh(value: number) {this._ix.value = this.ixl + (value << 8); }
+    set ixh(value: number) { this._ix.value = this.ixl + (value << 8); }
 
     get ixl(): number { return this._ix.value & 0xff; }
-    
+
     set ixl(value: number) { this._ix.value = (this.ixh << 8) + (value & 0xff); }
 
     get iyh(): number { return this._iy.value >>> 8; }
 
-    set iyh(value: number) {this._iy.value = this.iyl + (value << 8); }
+    set iyh(value: number) { this._iy.value = this.iyl + (value << 8); }
 
     get iyl(): number { return this._iy.value & 0xff; }
-    
+
     set iyl(value: number) { this._iy.value = (this.iyh << 8) + (value & 0xff); }
 
-    get ['(hl)'] (): number { return this.bus.read8(this.hl); }  
+    get ['(hl)'](): number { return this.bus.read8(this.hl); }
 
-    set ['(hl)'] (value: number) { this.bus.write8(this.hl, value); } 
+    set ['(hl)'](value: number) { this.bus.write8(this.hl, value); }
 
     get af(): number { return (this.registers[RegisterName.A].value << 8) + this.f; }
 
@@ -255,7 +263,7 @@ export class Cpu {
     get e(): number { return this.registers[RegisterName.E].value; }
 
     set e(value: number) { this.registers[RegisterName.E].value = value; }
-    
+
     get h(): number { return this.registers[RegisterName.H].value; }
 
     set h(value: number) { this.registers[RegisterName.H].value = value; }
@@ -268,7 +276,7 @@ export class Cpu {
         let f = 0;
         let shift = 7;
         for (const flag of Object.values(this.flags)) {
-            f |= (+flag) << shift; 
+            f |= (+flag) << shift;
             shift--;
         }
         return f;
@@ -280,7 +288,7 @@ export class Cpu {
             this.flags[flag] = !!(value & mask);
             mask >>>= 1;
         }
-        this.registers[RegisterName.F].value = value; 
+        this.registers[RegisterName.F].value = value;
     }
 
     get pc(): number { return this._pc.value; }

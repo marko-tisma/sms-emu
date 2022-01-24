@@ -1,6 +1,6 @@
 export const toHex = (value: number, padding?: number): string => {
     let result = value.toString(16);
-    if(padding) result = result.padStart(padding, '0');
+    if (padding) result = result.padStart(padding, '0');
     return result;
 }
 

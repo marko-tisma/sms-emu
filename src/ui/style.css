@@ -32,14 +32,13 @@ aside {
   color: white;
 }
 
-#disassembly .current {
-  background-color: dodgerblue;
-}
-
 #disassembly .breakpoint {
   background-color: orange;
 }
 
+#disassembly .current {
+  background-color: dodgerblue;
+}
 #disassembly li:hover{
   background-color: lightgray;
 }
@@ -97,5 +96,11 @@ input[type="text"] {
 
 #tiles {
   margin: 100px;
+}
+
+#fps {
+  margin: 1rem;
+  font-size: medium;
+  color: white;
 }
 

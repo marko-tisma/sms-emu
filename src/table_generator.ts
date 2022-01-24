@@ -37,6 +37,11 @@ export const generateInstructionTable = (cpu: Cpu): Instruction[] => {
     baseTable[0xdd] = {
         execute: () => {
             const op = cpu.next8();
+            if (op === 0xdd || op === 0xfd) {
+                cpu.tstates += 4;
+                cpu.pc--;
+                return;
+            }
             let instruction;
             if (op === 0xcb) instruction = ixcbTable[cpu.bus.read8(cpu.pc + 1)];
             else instruction = ixTable[op];
@@ -48,6 +53,11 @@ export const generateInstructionTable = (cpu: Cpu): Instruction[] => {
     baseTable[0xfd] = {
         execute: () => {
             const op = cpu.next8();
+            if (op === 0xdd || op === 0xfd) {
+                cpu.tstates += 4;
+                cpu.pc--;
+                return;
+            }
             let instruction;
             if (op === 0xcb) instruction = iycbTable[cpu.bus.read8(cpu.pc + 1)];
             else instruction = iyTable[op];

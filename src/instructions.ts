@@ -451,6 +451,7 @@ export const bit_y_r = (cpu: Cpu, p: {y: number, rs: RegisterSingle}) => {
         execute: () => {
             alu.bit_y(cpu, cpu[p.rs], p.y);
             cpu.tstates += 8;
+            if (p.rs === '(hl)') cpu.tstates += 4;
         },
         disassembly: () => `bit ${p.y}, ${p.rs}`
     }
@@ -462,8 +463,9 @@ export const res_y_r = (cpu: Cpu, p: {y: number, rs: RegisterSingle}) => {
             const mask = 1 << p.y;
             cpu[p.rs] &= (~mask);
             cpu.tstates += 8;
+            if (p.rs === '(hl)') cpu.tstates += 7;
         },
-        disassembly: () => `res $${toHex(p.y, 2)} ${p.rs}`
+        disassembly: () => `res ${p.y}, ${p.rs}`
     }
 }
 
@@ -472,8 +474,9 @@ export const set_y_r = (cpu: Cpu, p: {y: number, rs: RegisterSingle}) => {
         execute: () => {
             cpu[p.rs] |= 1 << p.y;
             cpu.tstates += 8;
+            if (p.rs === '(hl)') cpu.tstates += 7;
         },
-        disassembly: () => `set $${toHex(p.y, 2)} ${p.rs}`
+        disassembly: () => `set ${p.y}, ${p.rs}`
     }
 }
 
@@ -535,6 +538,8 @@ export const di = (cpu: Cpu) => {
 export const ei = (cpu: Cpu) => {
     return {
         execute: () => {
+            // cpu.iff1 = false;
+            // cpu.iff2 = false;
             cpu.eiRequested = true;
             cpu.tstates += 4;
         },
@@ -762,7 +767,7 @@ export const bit_y_idx = (cpu: Cpu,  p: {y: number, idx: 'ix' | 'iy'}) => {
             alu.bit_y(cpu, cpu.bus.read8(address), p.y);
             cpu.tstates += 20;
         },
-        disassembly: () => `bit $${toHex(p.y, 2)}, ($${p.idx} + D)`
+        disassembly: () => `bit ${p.y}, ($${p.idx} + D)`
     }
 }
 
@@ -775,7 +780,7 @@ export const res_y_idx = (cpu: Cpu, p: {y: number, idx: 'ix' | 'iy'}) => {
             cpu.bus.write8(address, result);
             cpu.tstates += 23;
         },
-        disassembly: () => `res $${toHex(p.y, 2)}, ($${p.idx} + D)`
+        disassembly: () => `res ${p.y}, ($${p.idx} + D)`
     }
 }
 
@@ -789,7 +794,7 @@ export const ld_res_y_idx = (cpu: Cpu,  p: {y: number, rs: RegisterSingle, idx: 
             cpu[p.rs] = cpu.bus.read8(address);
             cpu.tstates += 23;
         },
-        disassembly: () => `res $${toHex(p.y, 2)}, ($${p.idx} + D), ${p.rs}`
+        disassembly: () => `res ${p.y}, ($${p.idx} + D), ${p.rs}`
     }
 }
 
@@ -802,7 +807,7 @@ export const set_y_idx = (cpu: Cpu,  p: {y: number, idx: 'ix' | 'iy'}) => {
             cpu.bus.write8(address, result);
             cpu.tstates += 23;
         },
-        disassembly: () => `set $${toHex(p.y, 2)}, ($${p.idx} + D)`
+        disassembly: () => `set ${p.y}, ($${p.idx} + D)`
     }
 }
 
@@ -816,7 +821,7 @@ export const ld_set_y_idx = (cpu: Cpu,  p: {y: number, rs: RegisterSingle, idx: 
             cpu[p.rs] = cpu.bus.read8(address);
             cpu.tstates += 23;
         },
-        disassembly: () => `set $${toHex(p.y, 2)}, ($${p.idx} + D), ${p.rs}`
+        disassembly: () => `set ${p.y}, ($${p.idx} + D), ${p.rs}`
     }
 }
 

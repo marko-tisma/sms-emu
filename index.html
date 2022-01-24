@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script defer type="module" src="./src/ui/sms.ts"></script>
+    <script defer type="module" src="./src/ui/index.ts"></script>
     <title>SMS</title>
   </head>
   <body>
@@ -18,7 +18,9 @@
           <button class="button" id="start">start</button>
           <button class="button" id="pause">pause</button>
           <button class="button" id="step">step</button>
+          <button class="button" id="continue">continue</button>
         </div>
+        <div id="fps"></div>
         <div class="state">
           <ul id="cpu"></ul>
           <ul id="vdp"></ul>
@@ -31,9 +33,9 @@
           <ul id="mem"></ul>
         </div>
       </main>
-      <!-- <aside>
-          <canvas id="tiles" width="512" height="384"></canvas>
-      </aside> -->
+      <aside>
+          <canvas id="tile" width="64" height="64"></canvas>
+      </aside>
     </div>
   </body>
 </html>

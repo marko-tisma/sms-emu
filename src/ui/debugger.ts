@@ -4,7 +4,8 @@ import { Sms } from "./sms";
 
 export class Debugger {
 
-    breakpoints = new Set();
+    breakpoints = new Set<number>();
+    disassembly: Instruction[] = [];
 
     constructor(private sms: Sms) {
         document.getElementById('step')!.addEventListener('click', () => {
@@ -16,6 +17,9 @@ export class Debugger {
         document.getElementById('start')!.addEventListener('click', () => {
             this.start();
         });
+        document.getElementById('continue')!.addEventListener('click', () => {
+            this.continue();
+        });
         document.getElementById('mem_show')!.addEventListener('click', () => {
             this.showMemory();
         });
@@ -24,24 +28,42 @@ export class Debugger {
         });
     }
 
+    showDebug() {
+        document.querySelector('#disassembly')!.removeAttribute('style');
+        document.querySelector('.state')!.removeAttribute('style');
+    }
+
+    hideDebug() {
+        document.querySelector('#disassembly')!.setAttribute('style', 'display: none');
+        document.querySelector('.state')!.setAttribute('style', 'display: none');
+    }
+
+    start() {
+        if (this.sms.running) return;
+        this.hideDebug();
+        this.breakpoints.delete(this.sms.cpu.pc);
+        this.sms.running = true;
+        this.sms.animationRequest = requestAnimationFrame(this.sms.runFrame)
+    }
+
     step() {
         const tstates = this.sms.cpu.step();
-        this.sms.vdp.run(tstates);
+        this.sms.vdp.update(tstates);
         this.update();
     }
 
     pause() {
         this.breakpoints.add(this.sms.cpu.pc);
         this.sms.running = false;
-        this.update();
         this.showDebug();
+        this.update();
     }
 
-    start() {
+    continue() {
         if (this.sms.running) return;
-        this.breakpoints.delete(this.sms.cpu.pc);
-        this.sms.running = true;
         this.hideDebug();
+        this.step();
+        this.sms.running = true;
         this.sms.animationRequest = requestAnimationFrame(this.sms.runFrame)
     }
 
@@ -62,20 +84,25 @@ export class Debugger {
     }
 
     update() {
-        this.updateDisassembly(this.decodeNextInstructions(1000));
         this.updateState();
+        this.updateDisassembly(1000);
     }
 
-    updateDisassembly(instructions: Instruction[]) {
+    updateDisassembly(updateCount: number) {
+        const updated = this.decodeNextInstructions(updateCount);
+        this.disassembly = [...this.disassembly, ...updated];
+        this.disassembly.sort((a, b) => a.address! - b.address!);
+
         const list = document.querySelector('#disassembly')!;
         list.innerHTML = '';
-        for (const instruction of instructions) {
+        let currentLi;
+        for (const instruction of this.disassembly) {
             const address = instruction.address!;
             const li = document.createElement('li');
             if (this.breakpoints.has(address)) {
                 li.classList.add('breakpoint');
             }
-            li.setAttribute('id', address.toString());
+
             li.addEventListener('click', () => {
                 if (this.breakpoints.has(address)) {
                     this.breakpoints.delete(address);
@@ -91,9 +118,10 @@ export class Debugger {
             list.appendChild(li);
             if (address === this.sms.cpu.pc) {
                 li.classList.add('current');
-                li.scrollIntoView(true);
+                currentLi = li;
             }
         }
+        currentLi?.scrollIntoView(true);
     }
 
     updateState() {
@@ -103,19 +131,22 @@ export class Debugger {
 
         let text = registerPairs.map(rp => `${rp}: $${toHex(cpu[rp], 4)}`).join(', ');
         this.addLi(cpuList, text);
-        this.addLi(cpuList, `(hl): $${toHex(cpu['(hl)'], 2)}, (hl + 1): $${toHex(cpu.bus.read8(cpu.hl + 1), 2)}`);
+        this.addLi(cpuList, `(hl): $${toHex(cpu['(hl)'], 2)}`);
 
         text = Object.keys(cpu.flags).map(f => `${f}: ${cpu.flags[f]}`).join(', ');
         this.addLi(cpuList, text);
-        this.addLi(cpuList, `imode: ${cpu.interruptMode}`);
+        this.addLi(cpuList, `imode: ${cpu.interruptMode}, frame pages: ${cpu.bus.framePages}, iff1: ${cpu.iff1}, halted: ${cpu.halted}`);
 
         const vdpList = document.getElementById('vdp')! as HTMLUListElement;
         const vdp = this.sms.cpu.bus.vdp;
         vdpList.innerHTML = '';
-        this.addLi(vdpList, `address register: $${toHex(vdp.addressRegister, 4)}`);
-        this.addLi(vdpList, `code register: $${toHex(vdp.codeRegister, 4)}`);
-        this.addLi(vdpList, `vdp registers: ${vdp.registers.map((r, i) => i + ': $' + toHex(r, 2)).join(', ')}`);
-        this.addLi(vdpList, `vCounter: ${vdp.vCounter}, hCounter: ${vdp.hCounter}`);
+        text = `address register: $${toHex(vdp.addressRegister, 4)}` +
+            `, code register: $${toHex(vdp.codeRegister, 4)}` +
+            `, vdp registers: ${vdp.registers.map((r, i) => i + ': $' + toHex(r, 2)).join(', ')}`;
+        this.addLi(vdpList, text);
+        this.addLi(vdpList, `vCounter: ${vdp.vCounter}, hCounter: ${vdp.hCounter}, firstByte: ${vdp.firstControlByte}`);
+        text = `background table address: ${toHex(vdp.tilesTableAddress())}, frame interrupt pending: ${vdp.frameInterruptPending}`;
+        this.addLi(vdpList, text);
     }
 
     addLi(list: HTMLUListElement, text: string) {

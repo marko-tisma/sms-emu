@@ -4,53 +4,22 @@ import { Cpu } from "../cpu";
 import { Vdp } from "../vdp";
 import { Debugger } from "./debugger";
 
-import "./style.css";
-
-// const romUrl = 'http://localhost:3000/rom/test/zexdoc.out';
-// const romUrl = 'http://localhost:3000/rom/test/HelloWorld.sms';
-// const romUrl = 'http://localhost:3000/rom/ZEX/zexdoc.sms';
-const romUrl = 'http://localhost:3000/rom/bios13.sms';
-// const romUrl = 'http://localhost:3000/rom/jpbios.sms';
-// const romUrl = 'http://localhost:3000/rom/smsproto.sms';
-// const romUrl = 'http://localhost:3000/rom/alex_kidd_bios.sms'
-// const romUrl = 'http://localhost:3000/rom/sonbios.sms';
-// const romUrl = 'http://localhost:3000/rom/sonic.sms';
-// const romUrl = 'http://localhost:3000/rom/z80test/z80doc.asm';
-let sms;
-start(romUrl);
-
-async function start(romUrl: string) {
-	const rom = await loadRomFromServer(romUrl);
-	console.log(rom.length);
-	sms = new Sms(rom);
-	sms.animationRequest = requestAnimationFrame(sms.runFrame);
-}
-
-async function loadRomFromServer(url: string) {
-	const response = await fetch(url);
-	if (!response.ok) {
-		throw new Error(`File ${url} doesn't exist`);
-	}
-	const blob = await response.blob();
-	return new Uint8Array(await blob.arrayBuffer());
-}
 export class Sms {
-	static CPU_CLOCK = 3579540;
-	// static TSTATES_PER_FRAME = Math.ceil(Sms.CPU_CLOCK / 60);
-	static TSTATES_PER_FRAME = 59736;
+	// Timing information taken from https://www.smspower.org/forums/8161-SMSDisplayTiming
+	static readonly CPU_CLOCK_NTSC = 3579545;
+	static readonly FPS_NTSC = 59.9224;
+	static readonly TSTATES_PER_FRAME = Math.round(Sms.CPU_CLOCK_NTSC / Sms.FPS_NTSC);
 
 	cpu: Cpu;
 	bus: Bus;
 	vdp: Vdp;
 	debugger: Debugger;
 
-	animationRequest = 0;
 	running = false;
-
-	canvas: HTMLCanvasElement;
-
-	keyMask = 0xff;
+	animationRequest = 0;
+	controllerMaskA = 0xff;
 	tstatesFromLastFrame = 0;
+	canvas: HTMLCanvasElement;
 
 	constructor(rom: Uint8Array) {
 		this.canvas = document.querySelector('#screen')!;
@@ -59,11 +28,8 @@ export class Sms {
 		this.cpu = new Cpu(this.bus);
 		this.debugger = new Debugger(this);
 		this.debugger.breakpoints.add(0);
-		this.running = true;
 		this.initKeyListeners();
-		this.bus.out(0xdc, this.keyMask);
-		this.bus.out(0xdd, this.keyMask);
-		this.bus.out(0x3e, 0xc0);
+		this.running = true;
 	}
 
 	runFrame = (timestamp: DOMHighResTimeStamp) => {
@@ -72,12 +38,13 @@ export class Sms {
 		while (tstatesElapsed < Sms.TSTATES_PER_FRAME) {
 			if (this.debugger.breakpoints.has(this.cpu.pc)) {
 				this.running = false;
+				this.debugger.showDebug();
 				this.debugger.update();
 				return;
 			}
 			const tstates = this.cpu.step();
 			tstatesElapsed += tstates;
-			this.vdp.runOld(tstates);
+			this.vdp.update(tstates);
 		}
 		this.tstatesFromLastFrame = tstatesElapsed - Sms.TSTATES_PER_FRAME;
 		const fps = 1000 / Math.max(1000 / 60, performance.now() - timestamp);
@@ -89,63 +56,67 @@ export class Sms {
 	initKeyListeners() {
 		document.addEventListener('keydown', (e) => {
 			switch (e.key) {
+				case 'p':
+					this.cpu.resetRequested = true;
+					break;
 				case 'ArrowUp':
 				case 'w':
-					this.keyMask &= ~1;
+					this.controllerMaskA &= ~1;
 					break;
 				case 'ArrowDown':
 				case 's':
-					this.keyMask &= ~2;
+					this.controllerMaskA &= ~2;
 					break;
 				case 'ArrowLeft':
 				case 'a':
-					this.keyMask &= ~4;
+					this.controllerMaskA &= ~4;
 					break;
 				case 'ArrowRight':
 				case 'd':
-					this.keyMask &= ~8;
+					this.controllerMaskA &= ~8;
 					break;
 				case 'x':
 				case ' ':
-					this.keyMask &= ~16;
+					this.controllerMaskA &= ~16;
 					break;
 				case 'z':
-					this.keyMask &= ~32;
+					this.controllerMaskA &= ~32;
 					break;
 				default:
 					break;
 			}
-			this.bus.out(0xdc, this.keyMask);
+			this.bus.out(0xdc, this.controllerMaskA);
 		});
+
 		document.addEventListener('keyup', (e) => {
 			switch (e.key) {
 				case 'ArrowUp':
 				case 'w':
-					this.keyMask |= 1;
+					this.controllerMaskA |= 1;
 					break;
 				case 'ArrowDown':
 				case 's':
-					this.keyMask |= 2;
+					this.controllerMaskA |= 2;
 					break;
 				case 'ArrowLeft':
 				case 'a':
-					this.keyMask |= 4;
+					this.controllerMaskA |= 4;
 					break;
 				case 'ArrowRight':
 				case 'd':
-					this.keyMask |= 8;
+					this.controllerMaskA |= 8;
 					break;
 				case 'x':
 				case ' ':
-					this.keyMask |= 16;
+					this.controllerMaskA |= 16;
 					break;
 				case 'z':
-					this.keyMask |= 32;
+					this.controllerMaskA |= 32;
 					break;
 				default:
 					break;
 			}
-			this.bus.out(0xdc, this.keyMask);
+			this.bus.out(0xdc, this.controllerMaskA);
 		});
 	}
 }
