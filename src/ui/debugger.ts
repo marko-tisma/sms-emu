@@ -63,6 +63,7 @@ export class Debugger {
     step() {
         const tstates = this.sms.cpu.step();
         this.sms.cpu.bus.vdp.update(tstates);
+        this.sms.cpu.bus.sound.update(tstates);
         this.update();
     }
 
@@ -102,10 +103,12 @@ export class Debugger {
         this.updateDisassembly(1000);
     }
 
-    updateDisassembly(updateCount: number) {
-        const updated = this.decodeNextInstructions(updateCount);
-        this.disassembly = [...this.disassembly, ...updated];
-        this.disassembly.sort((a, b) => a.address! - b.address!);
+    updateDisassembly(instructionCount: number) {
+        const updated = this.decodeNextInstructions(instructionCount);
+        const pc = this.sms.cpu.pc;
+        let insertIndex = this.disassembly.findIndex(x => x.address! === pc);
+        if (insertIndex === -1) insertIndex = this.disassembly.length;
+        this.disassembly.splice(insertIndex, instructionCount, ...updated);
 
         const list = document.querySelector('#disassembly')!;
         list.innerHTML = '';
@@ -173,24 +176,31 @@ export class Debugger {
         const cpu = this.sms.cpu;
         const startTstates = cpu.tstates;
         let startPc = cpu.pc;
-        const instructions = [];
 
+        const instructions = [];
         for (let i = 0; i < count; i++) {
-            const currPc = cpu.pc;
+            const currentPc = cpu.pc;
             let decoded = decode(cpu.next8(), cpu);
             const instruction = decoded.instructionConstructor(cpu, decoded.params);
             let disassembly = instruction.disassembly();
             if (disassembly.includes('NN')) {
-                disassembly = disassembly.replace('NN', '$' + toHex(cpu.next16(), 4));
+                const nn = cpu.next16();
+                disassembly = disassembly.replace('NN', `$${toHex(nn, 4)}`);
             }
             if (disassembly.includes('N')) {
-                disassembly = disassembly.replace('N', '$' + toHex(cpu.next8(), 2));
+                const n = cpu.next8();
+                disassembly = disassembly.replace('N', `$${toHex(n, 2)}`);
             }
             if (disassembly.includes('D')) {
-                disassembly = disassembly.replace('D', '$' + toHex(cpu.next8Signed(), 2));
+                const d = cpu.next8Signed();
+                disassembly = disassembly.replace('D', `$${toHex(cpu.pc + d, 2)}`);
+                if (decoded.params?.idx && Object.keys(decoded.params).length > 1) {
+                    // Index CB instructions
+                    cpu.pc++;
+                }
             }
             instruction.disassembly = () => disassembly;
-            instruction.address = currPc;
+            instruction.address = currentPc;
             instructions.push(instruction);
         }
 
