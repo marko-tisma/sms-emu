@@ -8,6 +8,10 @@ export class Debugger {
     disassembly: Instruction[] = [];
 
     constructor(private sms: Sms) {
+        this.initListeners();
+    }
+
+    initListeners() {
         document.getElementById('step')!.addEventListener('click', () => {
             this.step();
         });
@@ -26,6 +30,16 @@ export class Debugger {
         document.getElementById('mem_clear')!.addEventListener('click', () => {
             this.clearMemory();
         });
+    }
+
+    checkBreakpoint(pc: number) {
+        if (this.breakpoints.has(pc)) {
+            this.update();
+            this.showDebug();
+            this.sms.running = false;
+            return true;
+        }
+        return false;
     }
 
     showDebug() {
@@ -74,7 +88,7 @@ export class Debugger {
             const bytes = this.sms.cpu.bus.readn(address, 16);
             const text = `${toHex(address, 4)}: ${bytes.map(b => `$${toHex(b, 2)}`).join(', ')}`;
             const list = document.getElementById('mem')! as HTMLUListElement;
-            this.addLi(list, text);
+            this.addTextLi(list, text);
         }
     }
 
@@ -116,7 +130,7 @@ export class Debugger {
             const text = `$${toHex(address, 4)}: ${instruction.disassembly()}`;
             li.appendChild(document.createTextNode(text));
             list.appendChild(li);
-            if (address === this.sms.cpu.pc) {
+            if (address === pc) {
                 li.classList.add('current');
                 currentLi = li;
             }
@@ -130,12 +144,12 @@ export class Debugger {
         cpuList.innerHTML = '';
 
         let text = registerPairs.map(rp => `${rp}: $${toHex(cpu[rp], 4)}`).join(', ');
-        this.addLi(cpuList, text);
-        this.addLi(cpuList, `(hl): $${toHex(cpu['(hl)'], 2)}`);
+        this.addTextLi(cpuList, text);
+        this.addTextLi(cpuList, `(hl): $${toHex(cpu['(hl)'], 2)}`);
 
         text = Object.keys(cpu.flags).map(f => `${f}: ${cpu.flags[f]}`).join(', ');
-        this.addLi(cpuList, text);
-        this.addLi(cpuList, `imode: ${cpu.interruptMode}, frame pages: ${cpu.bus.framePages}, iff1: ${cpu.iff1}, halted: ${cpu.halted}`);
+        this.addTextLi(cpuList, text);
+        this.addTextLi(cpuList, `imode: ${cpu.interruptMode}, frame pages: ${cpu.bus.framePages}, iff1: ${cpu.iff1}, halted: ${cpu.halted}`);
 
         const vdpList = document.getElementById('vdp')! as HTMLUListElement;
         const vdp = this.sms.cpu.bus.vdp;
@@ -143,13 +157,13 @@ export class Debugger {
         text = `address register: $${toHex(vdp.addressRegister, 4)}` +
             `, code register: $${toHex(vdp.codeRegister, 4)}` +
             `, vdp registers: ${vdp.registers.map((r, i) => i + ': $' + toHex(r, 2)).join(', ')}`;
-        this.addLi(vdpList, text);
-        this.addLi(vdpList, `vCounter: ${vdp.vCounter}, hCounter: ${vdp.hCounter}, firstByte: ${vdp.firstControlByte}`);
+        this.addTextLi(vdpList, text);
+        this.addTextLi(vdpList, `vCounter: ${vdp.vCounter}, hCounter: ${vdp.hCounter}, firstByte: ${vdp.firstControlByte}`);
         text = `background table address: ${toHex(vdp.tilesTableAddress())}, frame interrupt pending: ${vdp.frameInterruptPending}`;
-        this.addLi(vdpList, text);
+        this.addTextLi(vdpList, text);
     }
 
-    addLi(list: HTMLUListElement, text: string) {
+    addTextLi(list: HTMLUListElement, text: string) {
         const li = document.createElement('li');
         li.appendChild(document.createTextNode(text));
         list.appendChild(li);

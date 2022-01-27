@@ -45,11 +45,10 @@ const romUrl = 'http://localhost:3000/rom/sonic1.sms';
 // const romUrl = 'http://localhost:3000/rom/jim.sms';
 // const romUrl = 'http://localhost:3000/rom/SMSTestSuite.sms';
 // const romUrl = 'http://localhost:3000/rom/alex.sms';
-// const romUrl = 'http://localhost:3000/rom/z80test/z80doc.asm';
-let sms;
-start();
 
-async function start() {
+init();
+
+async function init() {
 	const rom = await loadRomFromServer(romUrl);
 	console.log(rom.length);
 	const cartridge = new Cartridge(rom);
@@ -57,9 +56,7 @@ async function start() {
 	const sound = new Sound(new window.AudioContext);
 	const bus = new Bus(cartridge, vdp, sound);
 	const cpu = new Cpu(bus);
-	sms = new Sms(cpu);
-    sms.running = true;
-	requestAnimationFrame(sms.runFrame);
+	const sms = new Sms(cpu);
 }
 
 async function loadRomFromServer(url: string) {
