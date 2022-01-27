@@ -34,8 +34,8 @@ export class Debugger {
 
     checkBreakpoint(pc: number) {
         if (this.breakpoints.has(pc)) {
-            this.update();
             this.showDebug();
+            this.update();
             this.sms.running = false;
             return true;
         }
@@ -55,12 +55,13 @@ export class Debugger {
     start() {
         if (this.sms.running) return;
         this.hideDebug();
-        this.breakpoints.delete(this.sms.cpu.pc);
+        this.breakpoints.clear();
         this.sms.running = true;
         requestAnimationFrame(this.sms.runFrame)
     }
 
     step() {
+        if (this.sms.running) return;
         const tstates = this.sms.cpu.step();
         this.sms.cpu.bus.vdp.update(tstates);
         this.sms.cpu.bus.sound.update(tstates);
@@ -76,8 +77,8 @@ export class Debugger {
 
     continue() {
         if (this.sms.running) return;
-        this.hideDebug();
         this.step();
+        this.hideDebug();
         this.sms.running = true;
         requestAnimationFrame(this.sms.runFrame)
     }
@@ -106,7 +107,7 @@ export class Debugger {
     updateDisassembly(instructionCount: number) {
         const updated = this.decodeNextInstructions(instructionCount);
         const pc = this.sms.cpu.pc;
-        let insertIndex = this.disassembly.findIndex(x => x.address! === pc);
+        let insertIndex = this.disassembly.findIndex(x => x.address! >= pc);
         if (insertIndex === -1) insertIndex = this.disassembly.length;
         this.disassembly.splice(insertIndex, instructionCount, ...updated);
 
