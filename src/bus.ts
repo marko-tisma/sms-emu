@@ -1,4 +1,5 @@
 import { Cartridge } from "./cartridge"
+import { Sound } from "./sound";
 import { Vdp } from "./vdp";
 
 export class Bus {
@@ -33,8 +34,8 @@ export class Bus {
 
     ram = new Uint8Array(Bus.RAM_SIZE);
     ports = new Uint8Array(256);
-
-    constructor(private cartridge: Cartridge, public vdp: Vdp) { }
+    
+    constructor(private cartridge: Cartridge, public vdp: Vdp, public sound: Sound) { }
 
     read8(address: number): number {
         // First 1KB is always from page 0
@@ -127,6 +128,10 @@ export class Bus {
     out(port: number, value: number) {
         port &= 0xff;
         switch (port & 0xc1) {
+            case 0x40:
+            case 0x41:
+                this.sound!.write(value);
+                break;
             case 0x80:
                 this.vdp.writeDataPort(value);
                 break;

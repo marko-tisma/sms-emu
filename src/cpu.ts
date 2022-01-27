@@ -116,7 +116,7 @@ export class Cpu {
         return this.tstates;
     }
 
-    private handleInterrupts(): void {
+    handleInterrupts(): void {
         if (this.resetRequested && !this.handlingReset) {
             this.resetRequested = false;
             this.handlingReset = true;
@@ -128,6 +128,7 @@ export class Cpu {
             this.tstates += 13;
         }
         else if (this.iff1 && this.bus.vdp.requestedInterrupt) {
+            this.bus.vdp.requestedInterrupt = false;
             this.iff1 = this.iff2 = false;
             this.halted = false;
             this.push16(this.pc);

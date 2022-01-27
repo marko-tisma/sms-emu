@@ -43,12 +43,12 @@ export class Debugger {
         this.hideDebug();
         this.breakpoints.delete(this.sms.cpu.pc);
         this.sms.running = true;
-        this.sms.animationRequest = requestAnimationFrame(this.sms.runFrame)
+        requestAnimationFrame(this.sms.runFrame)
     }
 
     step() {
         const tstates = this.sms.cpu.step();
-        this.sms.vdp.update(tstates);
+        this.sms.cpu.bus.vdp.update(tstates);
         this.update();
     }
 
@@ -64,7 +64,7 @@ export class Debugger {
         this.hideDebug();
         this.step();
         this.sms.running = true;
-        this.sms.animationRequest = requestAnimationFrame(this.sms.runFrame)
+        requestAnimationFrame(this.sms.runFrame)
     }
 
     showMemory() {

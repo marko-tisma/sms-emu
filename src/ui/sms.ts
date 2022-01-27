@@ -1,31 +1,21 @@
-import { Bus } from "../bus";
-import { Cartridge } from "../cartridge";
 import { Cpu } from "../cpu";
-import { Vdp } from "../vdp";
 import { Debugger } from "./debugger";
 
 export class Sms {
-	// Timing information taken from https://www.smspower.org/forums/8161-SMSDisplayTiming
-	static readonly CPU_CLOCK_NTSC = 3579545;
-	static readonly FPS_NTSC = 59.9224;
-	static readonly TSTATES_PER_FRAME = Math.round(Sms.CPU_CLOCK_NTSC / Sms.FPS_NTSC);
 
-	cpu: Cpu;
-	bus: Bus;
-	vdp: Vdp;
+    // Timing information taken from https://www.smspower.org/forums/8161-SMSDisplayTiming
+    static readonly CPU_CLOCK = 3579545;
+	static readonly FPS = 59.9224;
+	static readonly TSTATES_PER_FRAME = Math.round(Sms.CPU_CLOCK / Sms.FPS);
+
 	debugger: Debugger;
 
 	running = false;
-	animationRequest = 0;
-	controllerMaskA = 0xff;
 	tstatesFromLastFrame = 0;
-	canvas: HTMLCanvasElement;
 
-	constructor(rom: Uint8Array) {
-		this.canvas = document.querySelector('#screen')!;
-		this.vdp = new Vdp(this.canvas);
-		this.bus = new Bus(new Cartridge(rom), this.vdp);
-		this.cpu = new Cpu(this.bus);
+	controllerMaskA = 0xff;
+
+	constructor(public cpu: Cpu) {
 		this.debugger = new Debugger(this);
 		this.debugger.breakpoints.add(0);
 		this.initKeyListeners();
@@ -34,6 +24,7 @@ export class Sms {
 
 	runFrame = (timestamp: DOMHighResTimeStamp) => {
 		if (!this.running) return;
+
 		let tstatesElapsed = this.tstatesFromLastFrame;
 		while (tstatesElapsed < Sms.TSTATES_PER_FRAME) {
 			if (this.debugger.breakpoints.has(this.cpu.pc)) {
@@ -44,13 +35,16 @@ export class Sms {
 			}
 			const tstates = this.cpu.step();
 			tstatesElapsed += tstates;
-			this.vdp.update(tstates);
+
+			this.cpu.bus.sound.update(tstates);
+			this.cpu.bus.vdp.update(tstates);
 		}
 		this.tstatesFromLastFrame = tstatesElapsed - Sms.TSTATES_PER_FRAME;
+
 		const fps = 1000 / Math.max(1000 / 60, performance.now() - timestamp);
 		document.querySelector('#fps')!.innerHTML = `FPS: ${fps.toString().substring(0, 5)}`;
-		// console.log(`elapsed: ${performance.now() - timestamp}`);
-		this.animationRequest = requestAnimationFrame(this.runFrame);
+
+		requestAnimationFrame(this.runFrame);
 	}
 
 	initKeyListeners() {
@@ -85,7 +79,7 @@ export class Sms {
 				default:
 					break;
 			}
-			this.bus.out(0xdc, this.controllerMaskA);
+			this.cpu.bus.out(0xdc, this.controllerMaskA);
 		});
 
 		document.addEventListener('keyup', (e) => {
@@ -116,7 +110,7 @@ export class Sms {
 				default:
 					break;
 			}
-			this.bus.out(0xdc, this.controllerMaskA);
+			this.cpu.bus.out(0xdc, this.controllerMaskA);
 		});
 	}
 }

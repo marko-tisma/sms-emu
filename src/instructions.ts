@@ -848,8 +848,9 @@ export const block_io = (cpu: Cpu, p: {bli: BlockFunction}) => {
 export const block_load = (cpu: Cpu, p: {bli: BlockFunction}) => {
     return {
         execute: () => {
-            p.bli(cpu);
-            cpu.tstates += cpu.bc === 0 ? 16 : 21;
+            const r = p.bli(cpu);
+            // cpu.tstates += cpu.bc === 0 ? 16 : 21;
+            cpu.tstates += r ? 16 : 21;
         },
         disassembly: () => `${p.bli.fname}`
     }

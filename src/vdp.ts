@@ -252,8 +252,6 @@ export class Vdp {
                 const frameOffset = frameBaseOffset + x * 4;
 
                 if (!this.renderedSpritePositions.has(x) || (tile.priority && colorIndex !== 0)) {
-                    // if (tile.priority || !this.renderedSpritePositions.has(x)) {
-                    if (tile.priority && this.renderedSpritePositions.has(x) && colorIndex === 0) continue;
                     frameBuffer[frameOffset] = r;
                     frameBuffer[frameOffset + 1] = g;
                     frameBuffer[frameOffset + 2] = b;
