@@ -1,14 +1,14 @@
 import { Cpu } from "./cpu";
 import { Instruction, decodeBase, decodeEd, decodeCb, decodeIdx, decodeIdxcb, Decoded, BlockFunction, calculateExtraTstates } from "./decoder";
 
-export const generateInstructionTable = (cpu: Cpu): Instruction[] => {
-    const baseTable = new Array<Instruction>(256);
-    const edTable = new Array<Instruction>(256);
-    const cbTable = new Array<Instruction>(256);
-    const ixTable = new Array<Instruction>(256);
-    const iyTable = new Array<Instruction>(256);
-    const ixcbTable = new Array<Instruction>(256);
-    const iycbTable = new Array<Instruction>(256);
+export const generateInstructionTable = (cpu: Cpu): Function[] => {
+    const baseTable = new Array<Function>(256);
+    const edTable = new Array<Function>(256);
+    const cbTable = new Array<Function>(256);
+    const ixTable = new Array<Function>(256);
+    const iyTable = new Array<Function>(256);
+    const ixcbTable = new Array<Function>(256);
+    const iycbTable = new Array<Function>(256);
 
     for (let op = 0; op <= 0xff; op++) {
         baseTable[op] = rewriteInstruction(cpu, decodeBase(op));
@@ -20,58 +20,46 @@ export const generateInstructionTable = (cpu: Cpu): Instruction[] => {
         iycbTable[op] = rewriteInstruction(cpu, decodeIdxcb(op, 'iy'));
     }
 
-    baseTable[0xed] = {
-        execute: () => {
-            edTable[cpu.next8()].execute();
-        },
-        disassembly: () => ''
+    baseTable[0xed] = () => {
+        edTable[cpu.next8()]();
     }
 
-    baseTable[0xcb] = {
-        execute: () => {
-            cbTable[cpu.next8()].execute();
-        },
-        disassembly: () => ''
+    baseTable[0xcb] = () => {
+        cbTable[cpu.next8()]();
     }
 
-    baseTable[0xdd] = {
-        execute: () => {
-            const op = cpu.next8();
-            if (op === 0xdd || op === 0xfd) {
-                cpu.tstates += 4;
-                cpu.pc--;
-                return;
-            }
-            let instruction;
-            if (op === 0xcb) instruction = ixcbTable[cpu.bus.read8(cpu.pc + 1)];
-            else instruction = ixTable[op];
-            instruction.execute();
-        },
-        disassembly: () => ''
+    baseTable[0xdd] = () => {
+        const op = cpu.next8();
+        if (op === 0xdd || op === 0xfd) {
+            cpu.tstates += 4;
+            cpu.pc--;
+            return;
+        }
+        let instruction;
+        if (op === 0xcb) instruction = ixcbTable[cpu.bus.read8(cpu.pc + 1)];
+        else instruction = ixTable[op];
+        instruction();
     }
 
-    baseTable[0xfd] = {
-        execute: () => {
-            const op = cpu.next8();
-            if (op === 0xdd || op === 0xfd) {
-                cpu.tstates += 4;
-                cpu.pc--;
-                return;
-            }
-            let instruction;
-            if (op === 0xcb) instruction = iycbTable[cpu.bus.read8(cpu.pc + 1)];
-            else instruction = iyTable[op];
-            instruction.execute();
-        },
-        disassembly: () => ''
+    baseTable[0xfd] = () => {
+        const op = cpu.next8();
+        if (op === 0xdd || op === 0xfd) {
+            cpu.tstates += 4;
+            cpu.pc--;
+            return;
+        }
+        let instruction;
+        if (op === 0xcb) instruction = iycbTable[cpu.bus.read8(cpu.pc + 1)];
+        else instruction = iyTable[op];
+        instruction();
     }
 
     return baseTable;
 }
 
-// Rewrites the instruction execute and tstates functions so that every instruction
+// Rewrites the instruction execute function so that every function
 // parameter is hardcoded which improves performance at emulator run time
-const rewriteInstruction = (cpu: Cpu, {instructionConstructor, params}: Decoded): Instruction => {
+const rewriteInstruction = (cpu: Cpu, {instructionConstructor, params}: Decoded): Function => {
     const s = instructionConstructor.toString();
     // Need to determine variable names because esbuild can change them
     let [cpuVar, paramsVar] = s.slice(s.indexOf('(') + 1, s.indexOf(')')).split(',');
@@ -131,6 +119,5 @@ const rewriteInstruction = (cpu: Cpu, {instructionConstructor, params}: Decoded)
     }
     let tstatesToAdd = calculateExtraTstates({instructionConstructor, params});
     executeBody += `;this.tstates += ${tstatesToAdd};`
-    instruction.execute = Function(executeBody).bind(cpu);
-    return instruction;
+    return Function(executeBody).bind(cpu);
 }

@@ -73,7 +73,7 @@ export class Cpu {
 
     // Table mode trades off using more memory for better execution time
     decodingMode = DecodingMode.TABLE;
-    instructionTable: Instruction[] = [];
+    instructionTable: Function[] = [];
 
     // Instruction functions in table mode are scoped to cpu object so they need these
     alu = alu;
@@ -102,11 +102,11 @@ export class Cpu {
         if (this.decodingMode === DecodingMode.DECODE) {
             let decoded = decode(op, this);
             instruction = decoded.instructionConstructor(this, decoded.params);
+            instruction.execute();
         }
         else {
-            instruction = this.instructionTable[op];
+            this.instructionTable[op]();
         }
-        instruction.execute();
 
         return this.tstates;
     }
