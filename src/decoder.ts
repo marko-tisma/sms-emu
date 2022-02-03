@@ -6,7 +6,7 @@ import { get } from "./instructions";
 export const singleRegisters = [
     'b', 'c', 'd', 'e', 'h', 'l', 'f', 'a', 'ixh', 'ixl', 'iyh', 'iyl'
 ] as const;
-export type RegisterSingle = typeof singleRegisters[number] | '(hl)' | '(ix + d)' | '(iy + d)';
+export type RegisterSingle = typeof singleRegisters[number] | '(hl)' | '(ix + D)' | '(iy + D)';
 
 export const registerPairs = [
     'af', 'bc', 'de', 'hl', 'pc', 'sp', 'ix', 'iy'
@@ -301,7 +301,7 @@ export const decodeIdx = (op: number, idx: 'ix' | 'iy'): Decoded => {
     rp2[2] = idx;
     rs[4] = `${idx}h`;
     rs[5] = `${idx}l`;
-    rs[6] = `(${idx} + d)`;
+    rs[6] = `(${idx} + D)`;
     const [x, y, z,] = opPatterns(op);
     if (x === 1 && (y === 6 || z === 6)) {
         rs[4] = rs[4][2] as RegisterSingle;

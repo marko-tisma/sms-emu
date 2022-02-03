@@ -177,13 +177,13 @@ export class Cpu {
 
     set i(value: number) { this._i.value = value; }
 
-    get ['(ix + d)'](): number { return this.bus.read8(this.ix + this.next8Signed()) }
+    get ['(ix + D)'](): number { return this.bus.read8(this.ix + this.next8Signed()) }
 
-    set ['(ix + d)'](value: number) { this.bus.write8(this.ix + this.next8Signed(), value) }
+    set ['(ix + D)'](value: number) { this.bus.write8(this.ix + this.next8Signed(), value) }
 
-    get ['(iy + d)'](): number { return this.bus.read8(this.iy + this.next8Signed()) }
+    get ['(iy + D)'](): number { return this.bus.read8(this.iy + this.next8Signed()) }
 
-    set ['(iy + d)'](value: number) { this.bus.write8(this.iy + this.next8Signed(), value) }
+    set ['(iy + D)'](value: number) { this.bus.write8(this.iy + this.next8Signed(), value) }
 
     get ['(ix)'](): number { return this.bus.read8(this.ix) }
 
