@@ -3,39 +3,48 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Roboto+Mono&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script defer type="module" src="./src/ui/index.ts"></script>
+    <script defer type="module" src="./src/ui/app.ts"></script>
     <title>SMS</title>
   </head>
   <body>
-    <div class="emulator">
-      <aside>
-        <ul id="disassembly"></ul>
-      </aside>
+    <div id="emulator">
+        <aside class="sidebar">
+          <ul id="disassembly"></ul>
+        </aside>
+        <aside class="sidebar">
+          <ul id="state"></ul>
+        </aside>
+        <div id="debug_controls">
+          <button class="button red" id="step">step</button>
+          <button class="button red" id="continue">continue</button>
+          <input type="text" id="show_mem" placeholder="address: $0000">
+          <div id="mem_value"></div>
+        </div>
       <main>
         <canvas id="screen"></canvas>
-        <div class="controls">
-          <button class="button" id="start">start</button>
-          <button class="button" id="pause">pause</button>
-          <button class="button" id="step">step</button>
-          <button class="button" id="continue">continue</button>
-        </div>
         <div id="fps"></div>
-        <div class="state">
-          <ul id="cpu"></ul>
-          <ul id="vdp"></ul>
-          <ul id="stack"></ul>
-          <div>
-            <input type="text" id="mem_addr" placeholder="00  ">
-            <button class="button" id="mem_show">show memory</button>
-            <button class="button" id="mem_clear">clear</button>
+        <div id="rom_name"></div>
+        <div>
+          <button class="button" id="start">start</button>
+          <div id="select_rom">
+            <button class="button">select ROM</button>
+            <div id="rom_list"></div>
           </div>
-          <ul id="mem"></ul>
+          <button class="button" id="browse_rom">browse ROM</button>
+        </div>
+        <div>
+          <button class="button" id="reset">reset</button>
+          <button class="button" id="debug">debug</button>
+          <button class="button red" id="toggle_sound">toggle sound</button>
+        </div>
+        <div id="keymap">
+
         </div>
       </main>
-      <aside>
-          <canvas id="tile" width="64" height="64"></canvas>
-      </aside>
     </div>
   </body>
 </html>

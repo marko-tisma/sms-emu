@@ -2,65 +2,38 @@ import { decode, Instruction, registerPairs } from "../decoder";
 import { toHex } from "../util";
 import { Sms } from "./sms";
 
+type State = { [key: string]: number | number[] | boolean };
 export class Debugger {
 
     breakpoints = new Set<number>();
-    disassembly: Instruction[] = [];
+    private disassembly: Instruction[] = [];
+    private state: State;
 
     constructor(private sms: Sms) {
-        this.initListeners();
+        this.updateDisassembly(1000);
+        this.state = { ...this.getCpuState(), ...this.getVdpState() };
+        this.hideDebugUi();
     }
 
-    initListeners() {
-        document.getElementById('step')!.addEventListener('click', () => {
-            this.step();
-        });
-        document.getElementById('pause')!.addEventListener('click', () => {
-            this.pause();
-        });
-        document.getElementById('start')!.addEventListener('click', () => {
-            this.start();
-        });
-        document.getElementById('continue')!.addEventListener('click', () => {
-            this.continue();
-        });
-        document.getElementById('mem_show')!.addEventListener('click', () => {
-            this.showMemory();
-        });
-        document.getElementById('mem_clear')!.addEventListener('click', () => {
-            this.clearMemory();
-        });
+    showDebugUi(): void {
+        document.getElementById('disassembly')!.style.display = 'inline';
+        document.getElementById('state')!.style.display = 'inline';
+        document.getElementById('debug_controls')!.style.display = 'flex';
     }
 
-    checkBreakpoint(pc: number) {
-        if (this.breakpoints.has(pc)) {
-            this.showDebug();
-            this.update();
-            this.sms.running = false;
-            return true;
-        }
-        return false;
+    hideDebugUi(): void {
+        document.getElementById('disassembly')!.style.display = 'none';
+        document.getElementById('state')!.style.display = 'none';
+        document.getElementById('debug_controls')!.style.display = 'none';
     }
 
-    showDebug() {
-        document.querySelector('#disassembly')!.removeAttribute('style');
-        document.querySelector('.state')!.removeAttribute('style');
+    startDebug(): void {
+        this.sms.running = false;
+        this.showDebugUi();
+        this.update();
     }
 
-    hideDebug() {
-        document.querySelector('#disassembly')!.setAttribute('style', 'display: none');
-        document.querySelector('.state')!.setAttribute('style', 'display: none');
-    }
-
-    start() {
-        if (this.sms.running) return;
-        this.hideDebug();
-        this.breakpoints.clear();
-        this.sms.running = true;
-        requestAnimationFrame(this.sms.runFrame)
-    }
-
-    step() {
+    step(): void {
         if (this.sms.running) return;
         const tstates = this.sms.cpu.step();
         this.sms.cpu.bus.vdp.update(tstates);
@@ -68,43 +41,28 @@ export class Debugger {
         this.update();
     }
 
-    pause() {
-        this.breakpoints.add(this.sms.cpu.pc);
-        this.sms.running = false;
-        this.showDebug();
-        this.update();
-    }
-
-    continue() {
+    continue(): void {
         if (this.sms.running) return;
         this.step();
-        this.hideDebug();
-        this.sms.running = true;
-        requestAnimationFrame(this.sms.runFrame)
+        this.sms.run();
     }
 
-    showMemory() {
-        const input = document.getElementById('mem_addr')! as HTMLInputElement;
-        const address = parseInt(input.value, 16);
+    showMemory(event: Event): void {
+        const input = (<HTMLInputElement>event.target).value;
+        const address = parseInt(input, 16);
         if (!isNaN(address)) {
-            const bytes = this.sms.cpu.bus.readn(address, 16);
-            const text = `${toHex(address, 4)}: ${bytes.map(b => `$${toHex(b, 2)}`).join(', ')}`;
-            const list = document.getElementById('mem')! as HTMLUListElement;
-            this.addTextLi(list, text);
+            const value = toHex(this.sms.cpu.bus.read8(address));
+            const text = `byte at $${toHex(address, 4)}: $${value}`;
+            document.querySelector('#mem_value')!.innerHTML = text;
         }
     }
 
-    clearMemory() {
-        const list = document.getElementById('mem')! as HTMLUListElement;
-        list.innerHTML = '';
-    }
-
-    update() {
+    update(): void {
         this.updateState();
-        this.updateDisassembly(1000);
+        this.updateDisassembly(10);
     }
 
-    updateDisassembly(instructionCount: number) {
+    private updateDisassembly(instructionCount: number): void {
         const updated = this.decodeNextInstructions(instructionCount);
         const pc = this.sms.cpu.pc;
         let insertIndex = this.disassembly.findIndex(x => x.address! >= pc);
@@ -113,13 +71,11 @@ export class Debugger {
 
         const list = document.querySelector('#disassembly')!;
         list.innerHTML = '';
-        let currentLi;
+        let currentInstructionLi;
         for (const instruction of this.disassembly) {
             const address = instruction.address!;
             const li = document.createElement('li');
-            if (this.breakpoints.has(address)) {
-                li.classList.add('breakpoint');
-            }
+            li.setAttribute('id', address.toString(16));
 
             li.addEventListener('click', () => {
                 if (this.breakpoints.has(address)) {
@@ -131,49 +87,24 @@ export class Debugger {
                     li.classList.add('breakpoint');
                 }
             });
+
+            if (this.breakpoints.has(address)) {
+                li.classList.add('breakpoint');
+            }
+            if (address === pc) {
+                li.classList.add('current');
+                currentInstructionLi = li;
+            }
             const text = `$${toHex(address, 4)}: ${instruction.disassembly()}`;
             li.appendChild(document.createTextNode(text));
             list.appendChild(li);
-            if (address === pc) {
-                li.classList.add('current');
-                currentLi = li;
-            }
         }
-        currentLi?.scrollIntoView(true);
+        if (!this.isElementInViewport(currentInstructionLi as HTMLElement)) {
+            currentInstructionLi?.scrollIntoView(true);
+        }
     }
 
-    updateState() {
-        const cpu = this.sms.cpu;
-        const cpuList = document.getElementById('cpu')! as HTMLUListElement;
-        cpuList.innerHTML = '';
-
-        let text = registerPairs.map(rp => `${rp}: $${toHex(cpu[rp], 4)}`).join(', ');
-        this.addTextLi(cpuList, text);
-        this.addTextLi(cpuList, `(hl): $${toHex(cpu['(hl)'], 2)}`);
-
-        text = Object.keys(cpu.flags).map(f => `${f}: ${cpu.flags[f]}`).join(', ');
-        this.addTextLi(cpuList, text);
-        this.addTextLi(cpuList, `imode: ${cpu.interruptMode}, frame pages: ${cpu.bus.framePages}, iff1: ${cpu.iff1}, halted: ${cpu.halted}`);
-
-        const vdpList = document.getElementById('vdp')! as HTMLUListElement;
-        const vdp = this.sms.cpu.bus.vdp;
-        vdpList.innerHTML = '';
-        text = `address register: $${toHex(vdp.addressRegister, 4)}` +
-            `, code register: $${toHex(vdp.codeRegister, 4)}` +
-            `, vdp registers: ${vdp.registers.map((r, i) => i + ': $' + toHex(r, 2)).join(', ')}`;
-        this.addTextLi(vdpList, text);
-        this.addTextLi(vdpList, `vCounter: ${vdp.vCounter}, hCounter: ${vdp.hCounter}, firstByte: ${vdp.firstControlByte}`);
-        text = `background table address: ${toHex(vdp.tilesTableAddress())}, frame interrupt pending: ${vdp.frameInterruptPending}`;
-        this.addTextLi(vdpList, text);
-    }
-
-    addTextLi(list: HTMLUListElement, text: string) {
-        const li = document.createElement('li');
-        li.appendChild(document.createTextNode(text));
-        list.appendChild(li);
-    }
-
-    decodeNextInstructions(count: number): Instruction[] {
+    private decodeNextInstructions(count: number): Instruction[] {
         const cpu = this.sms.cpu;
         const startTstates = cpu.tstates;
         let startPc = cpu.pc;
@@ -194,10 +125,13 @@ export class Debugger {
             }
             if (disassembly.includes('D')) {
                 const d = cpu.next8Signed();
-                disassembly = disassembly.replace('D', `$${toHex(cpu.pc + d, 2)}`);
                 if (decoded.params?.idx && Object.keys(decoded.params).length > 1) {
                     // Index CB instructions
                     cpu.pc++;
+                    disassembly = disassembly.replace('D', `$${toHex(d, 2)}`);
+                }
+                else {
+                    disassembly = disassembly.replace('D', `$${toHex(cpu.pc + d, 2)}`);
                 }
             }
             instruction.disassembly = () => disassembly;
@@ -210,6 +144,65 @@ export class Debugger {
         return instructions;
     }
 
+    private isElementInViewport(el: HTMLElement): boolean {
+        const rect = el.getBoundingClientRect();
+        return (
+            rect.top >= 0 &&
+            rect.left >= 0 &&
+            rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) && /* or $(window).height() */
+            rect.right <= (window.innerWidth || document.documentElement.clientWidth) /* or $(window).width() */
+        );
+    }
 
+    private updateState(): void {
+        const list = <HTMLUListElement>document.querySelector('#state');
+        list.innerHTML = '';
+        const newCpuState = this.getCpuState();
+        this.updateStateList(list, newCpuState);
+        const newVdpState = this.getVdpState();
+        this.updateStateList(list, newVdpState);
+        this.state = { ...newCpuState, ...newVdpState };
+    }
+
+    private updateStateList(stateList: HTMLUListElement, newState: State): void {
+        for (let [key, value] of Object.entries(newState)) {
+            const li = document.createElement('li');
+            let text;
+            if (typeof value !== 'number') text = `${key}: ${value}`;
+            else text = `${key}: $${toHex(<number>value, 4)}`;
+            li.appendChild(document.createTextNode(text));
+
+            if (this.state[key] !== value) li.classList.add('changed');
+            else li.classList.remove('changed');
+            stateList.appendChild(li);
+        }
+    }
+
+    private getCpuState(): State {
+        const cpu = this.sms.cpu;
+        const state: State = {};
+        for (const rp of registerPairs) {
+            state[rp] = cpu[rp];
+        }
+        for (const [flag, value] of Object.entries(cpu.flags)) {
+            state[flag] = value;
+        }
+        state['frame pages'] = cpu.bus.framePages;
+        state['iff1'] = cpu.iff1;
+        state['iff2'] = cpu.iff2;
+        state['halted'] = cpu.halted;
+        return state;
+    }
+
+    private getVdpState(): State {
+        const vdp = this.sms.cpu.bus.vdp;
+        const state: State = {};
+        state['address reg'] = vdp.addressRegister;
+        state['code reg'] = vdp.codeRegister;
+        for (const [i, value] of vdp.registers.entries()) {
+            state[i] = value;
+        }
+        return state;
+    }
 
 }

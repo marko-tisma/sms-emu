@@ -1,4 +1,4 @@
-import { Cpu } from "../cpu";
+import { Sms } from "./sms";
 
 enum Button {
     UP, DOWN, LEFT, RIGHT, A, B
@@ -8,21 +8,11 @@ export class Controller {
 
     // Bit set to 0 while button is pressed and to 1 otherwise
     pressedState = 0xff;
+    port = 0xdc;
 
-    constructor(private cpu: Cpu) {
-        this.initListeners();
-    }
+    pauseButtons = new Set(['p', 'Enter']);
 
-    buttonBit: {[key in Button]: number} = {
-        [Button.UP]: 0,
-        [Button.DOWN]: 1,
-        [Button.LEFT]: 2,
-        [Button.RIGHT]: 3,
-        [Button.A]: 4,
-        [Button.B]: 5,
-    } 
-
-    keyMap: {[key: string]: Button} = {
+    keyMap: { [key: string]: Button } = {
         'ArrowUp': Button.UP,
         'ArrowDown': Button.DOWN,
         'ArrowLeft': Button.LEFT,
@@ -32,35 +22,30 @@ export class Controller {
         'x': Button.B,
     }
 
-    initListeners() {
-        document.addEventListener('keydown', (e) => {
-            const key = e.key;
-            if (!this.keyMap[key]) return;
-            const button = this.keyMap[key];
-            this.pressed(button);
-        });
-        document.addEventListener('keyup', (e) => {
-            const key = e.key;
-            if (!this.keyMap[key]) return;
-            const button = this.keyMap[key];
-            this.released(button);
-        });
+    private buttonStateBit: { [key in Button]: number } = {
+        [Button.UP]: 0,
+        [Button.DOWN]: 1,
+        [Button.LEFT]: 2,
+        [Button.RIGHT]: 3,
+        [Button.A]: 4,
+        [Button.B]: 5,
     }
 
-    pressed(button: Button) {
-        const mask = ~(1 << this.buttonBit[button]);
-        this.pressedState &= mask;
-        this.outState();
+    constructor(private sms: Sms) { }
+
+    press(key: string): void {
+        if (this.pauseButtons.has(key)) this.sms.cpu.pausePressed = true;
+        const button = this.keyMap[key];
+        if (button === undefined) return;
+        this.pressedState &= ~(1 << this.buttonStateBit[button]);
+        this.sms.bus.out(this.port, this.pressedState);
     }
 
-    released(button: Button) {
-        const mask = 1 << this.buttonBit[button];
-        this.pressedState |= mask;
-        this.outState();
-    }
-
-    outState() {
-        this.cpu.bus.out(0xdc, this.pressedState);
+    release(key: string): void {
+        const button = this.keyMap[key];
+        if (button === undefined) return;
+        this.pressedState |= 1 << this.buttonStateBit[button];
+        this.sms.bus.out(this.port, this.pressedState);
     }
 
 }

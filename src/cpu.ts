@@ -61,7 +61,7 @@ export class Cpu {
     // Last instruction was enable interrupts
     eiRequested = false;
 
-    // Pause was pressed
+    pausePressed = false;
     resetRequested = false;
     handlingReset = false;
 
@@ -94,13 +94,8 @@ export class Cpu {
     step(): number {
         this.tstates = 0;
 
-        this.handleInterrupts();
+        if (this.handleInterrupts()) return 13;
         if (this.halted) return 4;
-        if (this.eiRequested) {
-            this.iff1 = true;
-            this.iff2 = true;
-            this.eiRequested = false;
-        }
 
         let op = this.next8();
         let instruction: Instruction;
@@ -116,16 +111,17 @@ export class Cpu {
         return this.tstates;
     }
 
-    handleInterrupts(): void {
-        if (this.resetRequested && !this.handlingReset) {
-            this.resetRequested = false;
+    handleInterrupts(): boolean {
+        let interrupt = false;
+        if (this.pausePressed && this.bus.vdp.vCounter === 0xff) {
+            this.pausePressed = false;
             this.handlingReset = true;
             this.iff2 = this.iff1;
             this.iff1 = false;
             this.halted = false;
             this.push16(this.pc);
             this.pc = 0x66;
-            this.tstates += 13;
+            interrupt = true;
         }
         else if (this.iff1 && this.bus.vdp.requestedInterrupt) {
             this.bus.vdp.requestedInterrupt = false;
@@ -133,8 +129,16 @@ export class Cpu {
             this.halted = false;
             this.push16(this.pc);
             this.pc = this.interruptMode === 1 ? 0x38 : this.i << 8;
-            this.tstates += 13;
+            interrupt = true;
         }
+
+        if (this.eiRequested) {
+            this.iff1 = true;
+            this.iff2 = true;
+            this.eiRequested = false;
+        }
+
+        return interrupt;
     }
 
     push8(value: number) {

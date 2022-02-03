@@ -4,47 +4,52 @@ import { testBit } from "./util";
 
 export class Sound {
 
-    sampleRate = 44100;
-    samplesPerFrame = this.sampleRate / 60;
-    tstatesPerSample = Sms.TSTATES_PER_FRAME / this.samplesPerFrame;
-    clocksPerSample = this.tstatesPerSample / 16;
-    bufferSize = this.sampleRate;
+    samplesPerFrame: number;
+    tstatesPerSample: number;
+    clocksPerSample: number;
 
     volumeRegisters = [0xf, 0xf, 0xf, 0xf];
-    volumeTable = [25, 20, 16, 13, 10, 8, 6, 5, 4, 3, 3, 2, 2, 1, 1, 0]
+    volumeTable = new Array(16);
+    maxVolume = 0.05;
 
     // First 3 items are tone registers, last item is the noise register
     frequencyRegisters = [1, 1, 1, 1];
     frequencyCounters = [0, 0, 0, 0];
     frequencyOutputs = [1, 1, 1, 1];
-    // Shift register
-    lfsr = 0x8000;
+    shiftRegister = 0x8000;
 
     latchedChannel = 0;
     latchedVolume = false;
 
-    audioBuffer: AudioBuffer;
-    bufferData: Float32Array;
     bufferIndex = 0;
 
-    tstatesSinceLastSample = 0;
     framesToQueue = 16;
+    tstatesSinceLastSample = 0;
 
-    constructor(private audioCtx: AudioContext) {
-        this.audioBuffer = audioCtx.createBuffer(1, this.bufferSize, this.sampleRate);
-        this.bufferData = this.audioBuffer.getChannelData(0);
+    constructor(
+        public audioBuffer: Float32Array,
+        public playAudio: Function,
+        public sampleRate: number
+    ) {
+        this.samplesPerFrame = this.sampleRate / 60;
+        this.tstatesPerSample = Sms.TSTATES_PER_FRAME / this.samplesPerFrame;
+        this.clocksPerSample = this.tstatesPerSample / 16;
+        this.initVolumeTable();
     }
 
-    playAudio() {
-        const source = this.audioCtx.createBufferSource();
-        source.buffer = this.audioBuffer;
-        source.connect(this.audioCtx.destination);
-        source.start(0);
+    initVolumeTable() {
+        const twoDb = 0.8;
+        let currVolume = this.maxVolume;
+        for (let i = 0; i < 15; i++) {
+            this.volumeTable[i] = currVolume;
+            currVolume *= twoDb;
+        }
+        this.volumeTable[15] = 0;
     }
 
     update(tstates: number) {
         this.tstatesSinceLastSample += tstates;
-        if (this.tstatesSinceLastSample < this.tstatesPerSample) return;
+        if (this.tstatesSinceLastSample <= this.tstatesPerSample) return; 
 
         // New sample
         this.tstatesSinceLastSample -= this.tstatesPerSample;
@@ -55,15 +60,15 @@ export class Sound {
             output += this.frequencyOutputs[i] * (this.volumeTable[this.volumeRegisters[i]]);
         }
         // Noise register
-        output += ((this.lfsr & 1) * this.volumeTable[this.volumeRegisters[3]]) << 1;
-        output /= 0x200;
-        this.bufferData[this.bufferIndex++] = output;
+        output += ((this.shiftRegister & 1) * this.volumeTable[this.volumeRegisters[3]]);
+        this.audioBuffer[this.bufferIndex++] = output;
 
-		if (this.bufferIndex === this.samplesPerFrame * this.framesToQueue) {
+        const queuedFrames = this.bufferIndex / this.samplesPerFrame;
+		if (queuedFrames === this.framesToQueue) {
 			this.playAudio();
 		}
-        if (this.bufferIndex >= this.bufferSize) {
-            this.bufferIndex -= this.bufferSize;
+        if (this.bufferIndex >= this.audioBuffer.length) {
+            this.bufferIndex -= this.audioBuffer.length;
         }
 
         for (let i = 0; i < 3; i++) {
@@ -92,12 +97,12 @@ export class Sound {
             if (this.frequencyOutputs[3] === 1) {
                 let feedback = 0;
                 if (testBit(2, this.frequencyRegisters[3])) {
-                    feedback = +parity(this.lfsr & 0x9);
-                    this.lfsr = (this.lfsr >> 1) | (feedback << 15);
+                    feedback = +parity(this.shiftRegister & 0x9);
+                    this.shiftRegister = (this.shiftRegister >> 1) | (feedback << 15);
                 }
                 else {
-                    this.lfsr >>= 1;
-                    if (this.lfsr === 0) this.lfsr = 0x8000;
+                    this.shiftRegister >>= 1;
+                    if (this.shiftRegister === 0) this.shiftRegister = 0x8000;
                 }
             }
         }
@@ -115,7 +120,7 @@ export class Sound {
                 if (this.latchedChannel < 3)
                     this.frequencyRegisters[this.latchedChannel] = (this.frequencyRegisters[this.latchedChannel] & 0x3f0) | (value & 0xf);
                 else {
-                    this.lfsr = 0x8000;
+                    this.shiftRegister = 0x8000;
                     this.frequencyRegisters[3] = value & 0xf;
                 }
                 this.latchedVolume = false;
@@ -131,7 +136,7 @@ export class Sound {
                     this.frequencyRegisters[this.latchedChannel] = (this.frequencyRegisters[this.latchedChannel] & 0xf) | ((value & 0x3f) << 4);
                 }
                 else {
-                    this.lfsr = 0x8000;
+                    this.shiftRegister = 0x8000;
                     this.frequencyRegisters[3] = value & 0xf;
                 }
             }

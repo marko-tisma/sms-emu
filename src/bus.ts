@@ -116,9 +116,14 @@ export class Bus {
 
     in(port: number) {
         port &= 0xff;
+        if (port === 0xdd) {
+            // Export console
+            const p = this.ports[0x3f];
+            return (p & 0x80) | ((p & 0x20) << 1) | ((this.ports[0xdd]) & 0x3f);
+        }
         switch (port & 0xc1) {
-            case 0x40: return this.vdp.vCounter;
-            case 0x41: return this.vdp.hCountBuffer;
+            case 0x40: return (this.vdp.vCounter - 1) & 0xff;
+            case 0x41: return 0;
             case 0x80: return this.vdp.readDataPort();
             case 0x81: return this.vdp.readControlPort();
             default: return this.ports[port];

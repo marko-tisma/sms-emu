@@ -28,12 +28,16 @@ export class Vdp {
     // Used for sprite collisions, stores X coordinates for current scanline
     renderedSpritePositions = new Set<number>();
 
+    // Current scanline
     vCounter = 0;
+
+    // Number of clocks since starting the current scanline
+    // 3 times the speed of CPU clock
     hCounter = 0;
+
     lineCounter = 0;
-    vScrollBuffer = 0;
-    hCountBuffer = 0;
     readBuffer = 0;
+    vScrollBuffer = 0;
 
     firstControlByte = true;
     spriteOverflow = false;
@@ -42,39 +46,29 @@ export class Vdp {
     lineInterruptPending = false;
     vCounterJumped = false;
     requestedInterrupt = false;
+    firstVSync = true;
+    firstHSync = true;
 
-    private imageData: ImageData;
-    private canvasScale = 2;
-
-    constructor(private canvas: HTMLCanvasElement) {
-        canvas.width = this.widthPixels * this.canvasScale;
-        canvas.height = this.heightPixels * this.canvasScale;
-        const ctx = canvas.getContext('2d')!;
-        ctx.imageSmoothingEnabled = false;
-        this.imageData = ctx.createImageData(this.widthPixels, this.heightPixels);
-        this.imageData.data.fill(0xff);
-        this.drawFrame();
+    constructor(public frameBuffer: Uint8ClampedArray, public drawFrame: Function) {
         this.registers[2] = 0x0e;
         this.registers[5] = 0x7e;
     }
 
-    drawFrame() {
-        const ctx = this.canvas.getContext('2d')!;
-        ctx.putImageData(this.imageData, 0, 0);
-        ctx.drawImage(
-            ctx.canvas, 0, 0,
-            ctx.canvas.width * this.canvasScale,
-            ctx.canvas.height * this.canvasScale
-        );
-    }
-
     update(tstates: number) {
-        this.hCounter += tstates;
-        if (this.hCounter <= Vdp.TSTATES_PER_SCANLINE) return;
+        this.hCounter += (tstates * 3);
+        this.generateInterrupts();
+        if (this.hCounter < (Vdp.TSTATES_PER_SCANLINE * 3)) return;
 
         // New scanline
-        this.hCounter -= Vdp.TSTATES_PER_SCANLINE;
-        this.generateInterrupts();
+        this.hCounter -= (Vdp.TSTATES_PER_SCANLINE * 3);
+        this.firstHSync = this.firstVSync = true;
+
+        if (this.vCounter <= this.heightPixels) {
+            if (this.lineCounter === 0) {
+                this.lineCounter = this.registers[10];
+            }
+            else this.lineCounter--;
+        }
 
         if (this.vCounter < this.heightPixels) {
             // Active display area
@@ -92,6 +86,8 @@ export class Vdp {
             this.vCounterJumped = false;
             this.vScrollBuffer = this.registers[9];
             this.lineCounter = this.registers[10];
+            this.frameInterruptPending = false;
+            this.lineInterruptPending = false;
         }
         else if (!this.vCounterJumped && this.vCounter === 0xda) {
             this.vCounterJumped = true;
@@ -101,17 +97,16 @@ export class Vdp {
     }
 
     generateInterrupts() {
-        this.requestedInterrupt = false;
-        if (this.vCounter <= this.heightPixels) {
-            if (this.lineCounter === 0) {
-                this.lineInterruptPending = true;
-                this.lineCounter = this.registers[10];
-            }
-            else this.lineCounter--;
-        }
-        if (this.vCounter === this.heightPixels) {
+        if (this.firstVSync && this.hCounter >= 607 && this.vCounter === 193) {
+            this.firstVSync = false;
             this.frameInterruptPending = true;
         }
+        if (this.firstHSync && this.hCounter >= 608 && this.lineCounter === 0 && this.vCounter <= 192) {
+            this.firstHSync = false;
+            this.lineInterruptPending = true;
+        }
+
+        this.requestedInterrupt = false;
         if (this.frameInterruptPending && testBit(5, this.registers[1])) {
             this.requestedInterrupt = true;
         }
@@ -133,12 +128,12 @@ export class Vdp {
 
         const scanline = this.vCounter;
         const spriteTableBaseAddress = (this.registers[5] & 0x7e) << 7;
-        const frameBuffer = this.imageData.data;
         const frameBaseOffset = scanline * this.widthPixels * 4;
         let spritesRendered = 0;
 
         for (let spriteNumber = 0; spriteNumber < 64; spriteNumber++) {
-            const spriteY = this.vram[spriteTableBaseAddress + spriteNumber] + 1;
+            let spriteY = this.vram[spriteTableBaseAddress + spriteNumber];
+            spriteY = (spriteY + 1) & 0xff;
             if (this.heightPixels === 192 && spriteY === 0xd1) break;
 
             if (spriteY <= scanline && scanline < spriteY + spriteHeight) {
@@ -200,23 +195,24 @@ export class Vdp {
 
                     const [r, g, b] = this.interpolateColor(this.cram[16 + colorIndex]);
                     const frameAddress = frameBaseOffset + xPosition * 4;
-                    frameBuffer[frameAddress] = r;
-                    frameBuffer[frameAddress + 1] = g;
-                    frameBuffer[frameAddress + 2] = b;
-                    frameBuffer[frameAddress + 3] = 0xff;
+                    this.frameBuffer[frameAddress] = r;
+                    this.frameBuffer[frameAddress + 1] = g;
+                    this.frameBuffer[frameAddress + 2] = b;
+                    this.frameBuffer[frameAddress + 3] = 0xff;
                 }
             }
         }
     }
 
     renderBackgroundTiles() {
-        let scanline = (this.vCounter + this.vScrollBuffer) % 224;
+        let scanline = this.vCounter + this.vScrollBuffer;
+        if (scanline >= 224) scanline -= 224;
+        let row = Math.floor(this.vCounter / 8);
         let tileRow = Math.floor(scanline / 8);
+
         const startCol = 32 - (this.registers[8] >>> 3);
         let hFineScroll = this.registers[8] & 7;
-        const frameBuffer = this.imageData.data;
 
-        let row = Math.floor(this.vCounter / 8);
         for (let col = 0; col < 32; col++) {
             let tileCol = (startCol + col) & 31;
             if (testBit(6, this.registers[0]) && row <= 1) {
@@ -252,10 +248,10 @@ export class Vdp {
                 const frameOffset = frameBaseOffset + x * 4;
 
                 if (!this.renderedSpritePositions.has(x) || (tile.priority && colorIndex !== 0)) {
-                    frameBuffer[frameOffset] = r;
-                    frameBuffer[frameOffset + 1] = g;
-                    frameBuffer[frameOffset + 2] = b;
-                    frameBuffer[frameOffset + 3] = 0xff;
+                    this.frameBuffer[frameOffset] = r;
+                    this.frameBuffer[frameOffset + 1] = g;
+                    this.frameBuffer[frameOffset + 2] = b;
+                    this.frameBuffer[frameOffset + 3] = 0xff;
                 }
             }
 
@@ -265,34 +261,12 @@ export class Vdp {
             const [r, g, b] = this.interpolateColor(this.cram[16 + (this.registers[7] & 0xf)]);
             const frameBaseOffset = this.vCounter * this.widthPixels * 4;
             for (let pixel = 0; pixel < 8; pixel++) {
-                frameBuffer[frameBaseOffset + pixel * 4] = r;
-                frameBuffer[frameBaseOffset + pixel * 4 + 1] = g;
-                frameBuffer[frameBaseOffset + pixel * 4 + 2] = b;
-                frameBuffer[frameBaseOffset + pixel * 4 + 3] = 0xff;
+                this.frameBuffer[frameBaseOffset + pixel * 4] = r;
+                this.frameBuffer[frameBaseOffset + pixel * 4 + 1] = g;
+                this.frameBuffer[frameBaseOffset + pixel * 4 + 2] = b;
+                this.frameBuffer[frameBaseOffset + pixel * 4 + 3] = 0xff;
             }
         }
-    }
-
-    getPatternBp(patternNumber: number) {
-        const address = patternNumber * 32;
-        return this.vram.slice(address, address + 32);
-    }
-
-    getPattern(patternNumber: number) {
-        const address = patternNumber * 32;
-        const patternColorIndexes = new Uint8Array(64);
-        for (let line = 0; line < 8; line++) {
-            const bitplanes = this.vram.slice(address + (line * 4), address + (line * 4) + 4);
-            for (let pixel = 0; pixel < 8; pixel++) {
-                const shift = 7 - pixel;
-                let colorIndex = 0;
-                for (let bp = 0; bp < 4; bp++) {
-                    colorIndex |= ((bitplanes[bp] >> shift) & 1) << bp;
-                }
-                patternColorIndexes[line * 8 + pixel] = colorIndex;
-            }
-        }
-        return patternColorIndexes;
     }
 
     getTile(row: number, col: number): BackgroundTile {
@@ -308,10 +282,6 @@ export class Vdp {
             horizontalFlip: testBit(1, msb),
             verticalFlip: testBit(2, msb),
         }
-    }
-
-    tilesTableAddress() {
-        return (this.registers[2] & 0xe) << 10;
     }
 
     interpolateColor(color: number) {
@@ -384,6 +354,10 @@ export class Vdp {
         if (this.addressRegister > 0x3fff) {
             this.addressRegister = 0;
         }
+    }
+
+    tilesTableAddress() {
+        return (this.registers[2] & 0xe) << 10;
     }
 
     displayEnabled() {
