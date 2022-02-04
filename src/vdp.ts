@@ -128,7 +128,7 @@ export class Vdp {
 
         const scanline = this.vCounter;
         const spriteTableBaseAddress = (this.registers[5] & 0x7e) << 7;
-        const frameBaseOffset = scanline * this.widthPixels * 4;
+        const frameBaseAddress = scanline * this.widthPixels * 4;
         let spritesRendered = 0;
 
         for (let spriteNumber = 0; spriteNumber < 64; spriteNumber++) {
@@ -159,31 +159,30 @@ export class Vdp {
 
                 if (testBit(2, this.registers[6])) patternIndex += 256;
                 let patternAddress = patternIndex * 32 + patternLine * 4;
-                let bitplanes = this.vram.slice(patternAddress, patternAddress + 4);
-                if (spritesZoomed) {
+                let bitplanes = Array.from(this.vram.slice(patternAddress, patternAddress + 4));
+                if (spriteWidth === 16) {
                     // Stretch bitplanes from 8 to 16 pixels
                     bitplanes = bitplanes.map(bp => {
                         let stretched = 0;
-                        let mask = 1;
-                        for (let pixel = 0; pixel < 8; pixel++) {
-                            stretched |= (bp & mask) << (pixel * 2);
-                            stretched |= (bp & mask) << (pixel * 2 + 1);
-                            mask <<= 1;
+                        for (let pixel = 7; pixel >= 0; pixel--) {
+                            stretched <<= 1;
+                            stretched |= (bp >> pixel) & 1;
+                            stretched <<= 1;
+                            stretched |= (bp >> pixel) & 1;
                         }
                         return stretched;
                     });
                 }
 
                 for (let pixel = 0; pixel < spriteWidth; pixel++) {
-                    const xPosition = spriteX + pixel;
+                    let xPosition = spriteX + pixel;
                     if (xPosition < 0) continue;
                     if (xPosition >= this.widthPixels) break;
 
-                    const mask = spriteWidth === 16 ? 0x8000 >> pixel : 0x80 >> pixel;
                     const shift = spriteWidth - pixel - 1;
                     let colorIndex = 0;
                     for (let bp = 0; bp < 4; bp++) {
-                        colorIndex |= ((bitplanes[bp] & mask) << bp) >>> shift;
+                        colorIndex |= ((bitplanes[bp] >>> shift) & 1) << bp;
                     }
                     // Skip transparent pixels
                     if (colorIndex === 0) continue;
@@ -194,8 +193,9 @@ export class Vdp {
                     this.renderedSpritePositions.add(xPosition);
 
                     const [r, g, b] = this.interpolateColor(this.cram[16 + colorIndex]);
-                    const frameAddress = frameBaseOffset + xPosition * 4;
-                    this.frameBuffer[frameAddress] = r;
+                    let frameAddress = frameBaseAddress + xPosition * 4;
+
+                    this.frameBuffer[frameAddress] = r
                     this.frameBuffer[frameAddress + 1] = g;
                     this.frameBuffer[frameAddress + 2] = b;
                     this.frameBuffer[frameAddress + 3] = 0xff;
@@ -213,6 +213,7 @@ export class Vdp {
         const startCol = 32 - (this.registers[8] >>> 3);
         let hFineScroll = this.registers[8] & 7;
 
+        const frameBaseAddress = this.vCounter * this.widthPixels * 4;
         for (let col = 0; col < 32; col++) {
             let tileCol = (startCol + col) & 31;
             if (testBit(6, this.registers[0]) && row <= 1) {
@@ -244,8 +245,7 @@ export class Vdp {
                     colorIndex |= ((bitplanes[bp] >> shift) & 1) << bp;
                 }
                 const [r, g, b] = this.interpolateColor(this.cram[colorIndex + tile.palette * 16]);
-                const frameBaseOffset = this.vCounter * this.widthPixels * 4;
-                const frameOffset = frameBaseOffset + x * 4;
+                const frameOffset = frameBaseAddress + x * 4;
 
                 if (!this.renderedSpritePositions.has(x) || (tile.priority && colorIndex !== 0)) {
                     this.frameBuffer[frameOffset] = r;
