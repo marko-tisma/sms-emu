@@ -1,29 +1,31 @@
 import { Timing, VideoMode } from "./ui/sms";
 import { testBit } from "./util";
 
-export interface BackgroundTile {
-    priority: boolean,
-    palette: 0 | 1,
-    patternNumber: number,
-    horizontalFlip: boolean,
-    verticalFlip: boolean
+interface Color {
+    r: number,
+    g: number,
+    b: number
 }
 // Video display processor
+// Reference: https://www.smspower.org/uploads/Development/msvdp-20021112.txt
 export class Vdp {
 
     widthPixels = 256;
     heightPixels = 192;
 
     vram = new Uint8Array(2 ** 16);
-    cram = new Uint8Array(32);
+    palette = new Array<Color>(32).fill({r: 0, g: 0, b: 0});
     registers = new Array<number>(11).fill(0);
+
+    // Cache with pre-shifted tiles
+    backgroundTilesShifted = new Uint32Array(2 ** 14);
 
     // Writes go to CRAM if set to 3, VRAM otherwise 
     codeRegister: 0 | 1 | 2 | 3 = 0;
     addressRegister = 0;
 
     // Used for sprite collisions, stores X coordinates for current scanline
-    renderedSpritePositions = new Set<number>();
+    renderedSpritePositions = new Array<boolean>(300);
 
     // Current scanline
     private vCounter = 5;
@@ -34,7 +36,6 @@ export class Vdp {
     hCounterBuffer = 0;
 
     lineCounter = 0;
-    lineCounterDecremented = false;
     readBuffer = 0;
     vScrollBuffer = 0;
 
@@ -44,8 +45,8 @@ export class Vdp {
     frameInterruptPending = false;
     lineInterruptPending = false;
     requestedInterrupt = false;
-    firstVSync = true;
-    firstHSync = true;
+    firstVInterrupt = true;
+    firstHInterrupt = true;
 
     constructor(
         public videoMode: VideoMode,
@@ -57,16 +58,15 @@ export class Vdp {
         this.registers[5] = 0x7e;
     }
 
-    update(tstates: number) {
+    update(tstates: number): void {
         this.hCounter += (tstates * 3);
         this.generateInterrupts();
         if (this.hCounter < (this.timing.tstatesPerScanline * 3)) return;
 
         // New scanline
         this.hCounter -= (this.timing.tstatesPerScanline * 3);
-        this.lineCounterDecremented = false;
-        this.firstHSync = true;
-        this.firstVSync = true;
+        this.firstHInterrupt = true;
+        this.firstVInterrupt = true;
 
         if (this.vCounter <= this.heightPixels) {
             if (this.lineCounter === 0) {
@@ -79,7 +79,9 @@ export class Vdp {
             // Active display area
             this.renderSprites();
             this.renderBackgroundTiles();
+            this.renderBackdrop();
         }
+
         if (this.vCounter === this.heightPixels + 1 && this.displayEnabled()) {
             this.drawFrame();
         }
@@ -95,13 +97,13 @@ export class Vdp {
         else this.vCounter++;
     }
 
-    generateInterrupts() {
-        if (this.firstVSync && this.hCounter >= 607 && this.vCounter === 193) {
-            this.firstVSync = false;
+    generateInterrupts(): void {
+        if (this.firstVInterrupt && this.hCounter >= 607 && this.vCounter === 193) {
+            this.firstVInterrupt = false;
             this.frameInterruptPending = true;
         }
-        if (this.firstHSync && this.hCounter >= 608 && this.lineCounter === 0 && this.vCounter <= 192) {
-            this.firstHSync = false;
+        if (this.firstHInterrupt && this.hCounter >= 608 && this.lineCounter === 0 && this.vCounter <= 192) {
+            this.firstHInterrupt = false;
             this.lineInterruptPending = true;
         }
 
@@ -115,11 +117,12 @@ export class Vdp {
     }
 
     getVCounter(): number {
-        if (this.videoMode === VideoMode.NTSC) {
-            if (this.vCounter > 0xdb) return this.vCounter - 7;
+        // Vcounter jumps so it can store more than 256 scanlines in one byte
+        if (this.videoMode === VideoMode.NTSC && this.vCounter > 0xdb) {
+            return this.vCounter - 7;
         }
-        else {
-            if (this.vCounter > 0xf3) return this.vCounter - 58;
+        else if (this.videoMode === VideoMode.PAL && this.vCounter > 0xf3) {
+             return this.vCounter - 58;
         }
         return(this.vCounter - 1) & 0xff;
     }
@@ -128,8 +131,8 @@ export class Vdp {
         return Math.round((this.hCounterBuffer - 94) / 4);
     }
 
-    renderSprites() {
-        this.renderedSpritePositions.clear();
+    renderSprites(): void {
+        this.renderedSpritePositions = new Array<boolean>(300);
         let spriteWidth = 8;
         const spritesDoubled = testBit(1, this.registers[1]);
         let spriteHeight = spritesDoubled ? 16 : 8;
@@ -172,9 +175,10 @@ export class Vdp {
 
                 if (testBit(2, this.registers[6])) patternIndex += 256;
                 let patternAddress = patternIndex * 32 + patternLine * 4;
-                let bitplanes = Array.from(this.vram.slice(patternAddress, patternAddress + 4));
+                let bitplanes: number[] | Uint8Array = this.vram.slice(patternAddress, patternAddress + 4);
                 if (spriteWidth === 16) {
                     // Stretch bitplanes from 8 to 16 pixels
+                    bitplanes = Array.from(bitplanes);
                     bitplanes = bitplanes.map(bp => {
                         let stretched = 0;
                         for (let pixel = 7; pixel >= 0; pixel--) {
@@ -199,34 +203,30 @@ export class Vdp {
                     }
                     // Skip transparent pixels
                     if (colorIndex === 0) continue;
-                    if (this.renderedSpritePositions.has(xPosition) && this.displayEnabled()) {
+                    if (this.renderedSpritePositions[xPosition] && this.displayEnabled()) {
                         this.spriteCollision = true;
                         continue;
                     }
-                    this.renderedSpritePositions.add(xPosition);
+                    this.renderedSpritePositions[xPosition] = true;
 
-                    const [r, g, b] = this.interpolateColor(this.cram[16 + colorIndex]);
-                    let frameAddress = frameBaseAddress + xPosition * 4;
-
-                    this.frameBuffer[frameAddress] = r
-                    this.frameBuffer[frameAddress + 1] = g;
-                    this.frameBuffer[frameAddress + 2] = b;
-                    this.frameBuffer[frameAddress + 3] = 0xff;
+                    const color = this.palette[16 + colorIndex];
+                    this.writePixel(frameBaseAddress + xPosition * 4, color);
                 }
             }
         }
     }
 
-    renderBackgroundTiles() {
+    renderBackgroundTiles(): void {
         let scanline = this.vCounter + this.vScrollBuffer;
         if (scanline >= 224) scanline -= 224;
-        let row = Math.floor(this.vCounter / 8);
-        let tileRow = Math.floor(scanline / 8);
+        let row = this.vCounter >>> 3;
+        let tileRow = scanline >>> 3;
 
         const startCol = 32 - (this.registers[8] >>> 3);
         let hFineScroll = this.registers[8] & 7;
 
         const frameBaseAddress = this.vCounter * this.widthPixels * 4;
+        const tilesTableBase = this.tilesTableAddress();
         for (let col = 0; col < 32; col++) {
             let tileCol = (startCol + col) & 31;
             if (testBit(6, this.registers[0]) && row <= 1) {
@@ -237,74 +237,63 @@ export class Vdp {
             if (testBit(7, this.registers[0]) && col >= 24) {
                 // Vertical scroll fixed
                 scanline = this.vCounter;
-                tileRow = Math.floor(scanline / 8);
+                tileRow = scanline >>> 3;
             }
 
-            const tile = this.getTile(tileRow, tileCol);
-            let tileLine = (scanline & 7);
-            if (tile.verticalFlip) tileLine = 7 - tileLine;
-            const tileLineAddress = tile.patternNumber * 32 + (tileLine * 4);
+            let tileEntryAddress = tilesTableBase + (tileRow * 64) + (tileCol * 2);
+            if (!testBit(0, this.registers[2])) tileEntryAddress &= 0xfbff;
+    
+            const lsb = this.vram[tileEntryAddress];
+            const msb = this.vram[tileEntryAddress + 1];
+            let patternNumber =  ((msb & 1) << 8) | lsb;
+            let palette = (+testBit(3, msb) as 0 | 1) << 4;
+            let priority = testBit(4, msb);
+            let horizontalFlip = testBit(1, msb);
+            let verticalFlip = testBit(2, msb);
 
-            // Pattern line bitplanes
-            const bitplanes = this.vram.slice(tileLineAddress, tileLineAddress + 4);
+            let tileLine = (scanline & 7);
+            if (verticalFlip) tileLine = 7 - tileLine;
+
+            const tileLineAddress = (patternNumber << 3) + tileLine;
+            const lineIndexes = this.backgroundTilesShifted[tileLineAddress];
             for (let pixel = 0; pixel < 8; pixel++) {
-                const x = col * 8 + pixel + hFineScroll;
+                const x = (col << 3) + pixel + hFineScroll;
                 if (x >= this.widthPixels) break;
 
-                // Shift out bitplanes
-                const shift = tile.horizontalFlip ? pixel : 7 - pixel;
-                let colorIndex = 0;
-                for (let bp = 0; bp < 4; bp++) {
-                    colorIndex |= ((bitplanes[bp] >> shift) & 1) << bp;
-                }
-                const [r, g, b] = this.interpolateColor(this.cram[colorIndex + tile.palette * 16]);
-                const frameOffset = frameBaseAddress + x * 4;
-
-                if (!this.renderedSpritePositions.has(x) || (tile.priority && colorIndex !== 0)) {
-                    this.frameBuffer[frameOffset] = r;
-                    this.frameBuffer[frameOffset + 1] = g;
-                    this.frameBuffer[frameOffset + 2] = b;
-                    this.frameBuffer[frameOffset + 3] = 0xff;
+                const shift = horizontalFlip ? pixel << 2 : 28 - (pixel << 2);
+                const colorIndex = (lineIndexes >> shift) & 0xf;
+                if ((priority && colorIndex) || !this.renderedSpritePositions[x]) {
+                    this.writePixel(frameBaseAddress + (x << 2), this.palette[colorIndex + palette]);
                 }
             }
-
         }
+    }
+
+    renderBackdrop(): void {
         if (testBit(5, this.registers[0])) {
-            // Backdrop 
-            const [r, g, b] = this.interpolateColor(this.cram[16 + (this.registers[7] & 0xf)]);
-            const frameBaseOffset = this.vCounter * this.widthPixels * 4;
+            const color = this.palette[16 + (this.registers[7] & 0xf)];
+            const frameBaseAddress = this.vCounter * this.widthPixels * 4;
             for (let pixel = 0; pixel < 8; pixel++) {
-                this.frameBuffer[frameBaseOffset + pixel * 4] = r;
-                this.frameBuffer[frameBaseOffset + pixel * 4 + 1] = g;
-                this.frameBuffer[frameBaseOffset + pixel * 4 + 2] = b;
-                this.frameBuffer[frameBaseOffset + pixel * 4 + 3] = 0xff;
+                this.writePixel(frameBaseAddress + pixel * 4, color);
             }
         }
     }
 
-    getTile(row: number, col: number): BackgroundTile {
-        let tileEntryAddress = this.tilesTableAddress() + (row * 64) + (col * 2);
-        if (!testBit(0, this.registers[2])) tileEntryAddress &= 0xfbff;
-
-        const lsb = this.vram[tileEntryAddress];
-        const msb = this.vram[tileEntryAddress + 1];
-        return {
-            patternNumber: ((msb & 1) << 8) | lsb,
-            palette: +testBit(3, msb) as 0 | 1,
-            priority: testBit(4, msb),
-            horizontalFlip: testBit(1, msb),
-            verticalFlip: testBit(2, msb),
-        }
+    writePixel(address: number, color: Color): void {
+        this.frameBuffer[address] = color.r;
+        this.frameBuffer[address + 1] = color.g;
+        this.frameBuffer[address + 2] = color.b;
+        this.frameBuffer[address + 3] = 0xff;
     }
 
-    interpolateColor(color: number) {
+    interpolateColor(color: number): Color {
         let r = color & 3;
         let g = (color >> 2) & 3;
         let b = (color >> 4) & 3;
-        return [(r * 85), (g * 85), (b * 85)];
+        return {r: (r * 85), g: (g * 85), b: (b * 85)};
     }
 
-    readControlPort() {
+    readControlPort(): number {
         const status =
             +this.frameInterruptPending << 7 |
             +this.spriteOverflow << 6 |
@@ -318,7 +307,7 @@ export class Vdp {
         return status;
     }
 
-    writeControlPort(value: number) {
+    writeControlPort(value: number): void {
         value &= 0xff;
         if (this.firstControlByte) {
             this.firstControlByte = false;
@@ -350,30 +339,39 @@ export class Vdp {
         return ret;
     }
 
-    writeDataPort(value: number) {
+    writeDataPort(value: number): void {
         this.firstControlByte = true;
         this.readBuffer = value;
         if (this.codeRegister === 3) {
-            this.cram[this.addressRegister & 0x1f] = value;
+            this.palette[this.addressRegister & 0x1f] = this.interpolateColor(value);
         }
         else {
-            this.vram[this.addressRegister & 0x3fff] = value;
+            const address = this.addressRegister & 0x3fff;
+            this.vram[address] = value;
+            
+            const tileLine = address >> 2;
+            const bitplane = address & 3;
+            this.backgroundTilesShifted[tileLine] &= ~(0x11111111 << bitplane);
+            for (let pixel = 0; pixel < 8; pixel++) {
+                const mask = ((1 << pixel) & value) << (pixel * 3) << bitplane;
+                this.backgroundTilesShifted[tileLine] |= mask;
+            }
         }
         this.incrementAddress();
     }
 
-    incrementAddress() {
+    incrementAddress(): void {
         this.addressRegister++;
         if (this.addressRegister > 0x3fff) {
             this.addressRegister = 0;
         }
     }
 
-    tilesTableAddress() {
+    tilesTableAddress(): number {
         return (this.registers[2] & 0xe) << 10;
     }
 
-    displayEnabled() {
+    displayEnabled(): boolean {
         return testBit(6, this.registers[1]);
     }
 }
