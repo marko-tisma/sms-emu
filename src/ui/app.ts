@@ -1,66 +1,18 @@
 import "../../style.css";
-import { Sms } from "./sms";
-
-// const romUrl = 'http://localhost:3000/rom/test/zexdoc.out';
-// const romUrl = 'http://localhost:3000/rom/test/HelloWorld.sms';
-// const romUrl = 'http://localhost:3000/rom/ZEX/zexdoc.sms';
-// const romUrl = 'http://localhost:3000/rom/ZEX/zexall.sms';
-// const romUrl = 'http://localhost:3000/rom/VDPTEST.sms';
-// const romUrl = 'http://localhost:3000/rom/phantasy_star.sms';
-// const romUrl = 'http://localhost:3000/rom/bart.sms';
-// const romUrl = 'http://localhost:3000/rom/Not_Only_Words.sms';
-// const romUrl = 'http://localhost:3000/rom/pfrdetect.sms';
-// const romUrl = 'http://localhost:3000/rom/bios13.sms';
-// const romUrl = 'http://localhost:3000/rom/jpbios.sms';
-// const romUrl = 'http://localhost:3000/rom/smsproto.sms';
-// const romUrl = 'http://localhost:3000/rom/alex_kidd_bios.sms'
-// const romUrl = 'http://localhost:3000/rom/speedball.sms'
-// const romUrl = 'http://localhost:3000/rom/wonder.sms'
-// const romUrl = 'http://localhost:3000/rom/wonder_monster.sms'
-
-
-// const romUrl = 'http://localhost:3000/rom/wonder_monster2.sms'
-// const romUrl = 'http://localhost:3000/rom/wonder3.sms'
-// const romUrl = 'http://localhost:3000/rom/asterix.sms'
-// const romUrl = 'http://localhost:3000/rom/astroforce.sms'
-// const romUrl = 'http://localhost:3000/rom/bad_apple.sms'
-// const romUrl = 'http://localhost:3000/rom/4MB_Test.sms'
-// const romUrl = 'http://localhost:3000/rom/cycle_counter.sms'
-// const romUrl = 'http://localhost:3000/rom/vcounter_test.sms'
-// const romUrl = 'http://localhost:3000/rom/wonder3_2.sms'
-// const romUrl = 'http://localhost:3000/rom/road.sms'
-// const romUrl = 'http://localhost:3000/rom/aladdin.sms'
-// const romUrl = 'http://localhost:3000/rom/ultima4.sms'
-// const romUrl = 'http://localhost:3000/rom/miracle_warriors.sms'
-// const romUrl = 'http://localhost:3000/rom/outrun.sms'
-const romUrl = 'http://localhost:3000/rom/lion.sms'
-// const romUrl = 'http://localhost:3000/rom/DevSound.sms'
-// const romUrl = 'http://localhost:3000/rom/outrun2.sms'
-// const romUrl = 'http://localhost:3000/rom/mortal_kombat2.sms'
-// const romUrl = 'http://localhost:3000/rom/battleoutrun.sms'
-// const romUrl = 'http://localhost:3000/rom/sonbios.sms';
-// const romUrl = 'http://localhost:3000/rom/sonic1.sms';
-// const romUrl = 'http://localhost:3000/rom/sonic2.sms';
-// const romUrl = 'http://localhost:3000/rom/addams.sms';
-// const romUrl = 'http://localhost:3000/rom/jim.sms';
-// const romUrl = 'http://localhost:3000/rom/lemmings.sms';
-// const romUrl = 'http://localhost:3000/rom/hang_on.sms';
-// const romUrl = 'http://localhost:3000/rom/sagaia.sms';
-// const romUrl = 'http://localhost:3000/rom/altered_beast.sms';
-// const romUrl = 'http://localhost:3000/rom/SMSTestSuite.sms';
-// const romUrl = 'http://localhost:3000/rom/alex.sms';
-// const romUrl = 'http://localhost:3000/rom/spiderman.sms';
+import { Sms, VideoMode } from "./sms";
 
 const app = async () => {
-	const romNames = [
-		'asterix.sms',
-		'lion.sms',
-		'sonic1.sms',
+	const demoRoms = [
+		{ name: 'astroforce.sms', videoMode: VideoMode.NTSC},
+		{ name: 'bad_apple.sms', videoMode: VideoMode.NTSC},
+		{ name: 'GenesisProject-Lambo.sms', videoMode: VideoMode.PAL},
+		{ name: 'sub_rescue-0.3.sms', videoMode: VideoMode.NTSC},
 	];
-	const defaultRomName = 'sonic1.sms';
-	let currentRomName = defaultRomName;
-	let currentRom = await fetchRom(defaultRomName);
+	const defaultRom = demoRoms[0];
+	let currentRomName = defaultRom.name;
+	let currentRomData = await fetchRomData(defaultRom.name);
 
+	let videoMode = VideoMode.NTSC;
 	let canvas = <HTMLCanvasElement>document.querySelector('#screen');
 	let widthPixels = 256;
 	let heightPixels = 192;
@@ -76,8 +28,9 @@ const app = async () => {
 	let soundEnabled = false;
 
 	initUi();
+	setVideoMode(defaultRom.videoMode);
 	let sms = new Sms(
-		currentRom, imageData.data, drawFrame,
+		currentRomData, videoMode, imageData.data, drawFrame,
 		audioBuffer.getChannelData(0), playAudio, sampleRate
 	);
 
@@ -103,12 +56,17 @@ const app = async () => {
 		);
 	}
 
+	function setVideoMode(mode: VideoMode) {
+		videoMode = mode;
+		document.getElementById('toggle_video_mode')!.innerText = `mode: ${VideoMode[videoMode]}`;
+	}
+
 	function initUi(): void {
 		initRomList();
 		initButtons();
 		initScreen();
 		initKeyListeners();
-		document.getElementById('rom_name')!.innerText = `ROM: ${defaultRomName}`;
+		document.getElementById('rom_name')!.innerText = `ROM: ${defaultRom.name}`;
 	}
 
 	function initScreen(): void {
@@ -134,11 +92,14 @@ const app = async () => {
 	}
 
 	function initButtons(): void {
-		document.getElementById('start')?.addEventListener('click', () => {
+		document.querySelector('#toggle_video_mode')?.addEventListener('click', () => {
+			toggleMode();
+		});
+		document.querySelector('#start')?.addEventListener('click', () => {
 			sms.run();
 		});
 		document.querySelector('#reset')?.addEventListener('click', () => {
-			loadRom(currentRom, currentRomName);
+			loadRom(currentRomData, currentRomName);
 		});
 		document.querySelector('#toggle_sound')!.addEventListener('click', () => {
 			toggleSound();
@@ -166,6 +127,12 @@ const app = async () => {
 		});
 	}
 
+	function toggleMode(): void {
+		setVideoMode(videoMode === VideoMode.NTSC ? VideoMode.PAL : VideoMode.NTSC);
+		document.getElementById('toggle_video_mode')!.innerText = `mode: ${VideoMode[videoMode]}`;
+		loadRom(currentRomData, currentRomName);
+	}
+
 	function toggleSound(): void {
 		soundEnabled = !soundEnabled;
 		const toggleSound = document.querySelector('#toggle_sound')!;
@@ -180,23 +147,24 @@ const app = async () => {
 		}
 		stopAudio();
 		sms = new Sms(
-			rom, imageData.data, drawFrame,
+			rom, videoMode, imageData.data, drawFrame,
 			audioBuffer.getChannelData(0), playAudio, sampleRate
 		);
 		document.getElementById('rom_name')!.innerText = `ROM: ${name}`;
-		currentRom = rom;
+		currentRomData = rom;
 		currentRomName = name;
 		sms.run();
 	}
 
 	function initRomList(): void {
 		const romList = <HTMLDivElement>document.querySelector('#rom_list')!;
-		romNames.forEach(romName => {
+		demoRoms.forEach(rom => {
 			const li = document.createElement('li');
-			li.innerText = romName;
+			li.innerText = rom.name;
 			li.addEventListener('click', async () => {
-				const rom = await fetchRom(romName);
-				loadRom(rom, romName);
+				const r = await fetchRomData(rom.name);
+				setVideoMode(rom.videoMode);
+				loadRom(r, rom.name);
 			});
 			romList.appendChild(li);
 		});
@@ -230,14 +198,15 @@ const app = async () => {
 			if (input.files && input.files[0]) {
 				const file = input.files[0];
 				const buffer = await file.arrayBuffer();
+				setVideoMode(VideoMode.NTSC);
 				loadRom(new Uint8Array(buffer), file.name);
 			}
 		});
 		input.dispatchEvent(new MouseEvent('click'));
 	}
 
-	async function fetchRom(romName: string) {
-		const url = `http://localhost:3000/rom/${romName}`;
+	async function fetchRomData(romName: string) {
+		const url = `http://localhost:3000/rom/demo/${romName}`;
 		const response = await fetch(url);
 		if (!response.ok) {
 			throw new Error(`File ${url} doesn't exist`);

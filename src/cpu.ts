@@ -85,7 +85,6 @@ export class Cpu {
         this.sp = 0xdff0;
         this.bus.out(0xdc, 0xff);
         this.bus.out(0xdd, 0xff);
-        this.bus.out(0x3e, 0xc0);
         if (this.decodingMode === DecodingMode.TABLE) {
             this.instructionTable = generateInstructionTable(this);
         }
@@ -113,7 +112,7 @@ export class Cpu {
 
     handleInterrupts(): boolean {
         let interrupt = false;
-        if (this.pausePressed && this.bus.vdp.vCounter === 0xff) {
+        if (this.pausePressed && this.bus.vdp.getVCounter() === 0xff) {
             this.pausePressed = false;
             this.handlingReset = true;
             this.iff2 = this.iff1;

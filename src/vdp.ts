@@ -1,3 +1,4 @@
+import { Timing, VideoMode } from "./ui/sms";
 import { testBit } from "./util";
 
 export interface BackgroundTile {
@@ -9,10 +10,6 @@ export interface BackgroundTile {
 }
 // Video display processor
 export class Vdp {
-
-    // Timing information taken from https://www.smspower.org/forums/8161-SMSDisplayTiming
-    static readonly SCANLINES_PER_FRAME = 262;
-    static readonly TSTATES_PER_SCANLINE = 228;
 
     widthPixels = 256;
     heightPixels = 192;
@@ -29,13 +26,15 @@ export class Vdp {
     renderedSpritePositions = new Set<number>();
 
     // Current scanline
-    vCounter = 0;
+    private vCounter = 5;
 
     // Number of clocks since starting the current scanline
     // 3 times the speed of CPU clock
     hCounter = 0;
+    hCounterBuffer = 0;
 
     lineCounter = 0;
+    lineCounterDecremented = false;
     readBuffer = 0;
     vScrollBuffer = 0;
 
@@ -44,12 +43,16 @@ export class Vdp {
     spriteCollision = false;
     frameInterruptPending = false;
     lineInterruptPending = false;
-    vCounterJumped = false;
     requestedInterrupt = false;
     firstVSync = true;
     firstHSync = true;
 
-    constructor(public frameBuffer: Uint8ClampedArray, public drawFrame: Function) {
+    constructor(
+        public videoMode: VideoMode,
+        public frameBuffer: Uint8ClampedArray,
+        public drawFrame: Function,
+        public timing: Timing
+    ) {
         this.registers[2] = 0x0e;
         this.registers[5] = 0x7e;
     }
@@ -57,11 +60,13 @@ export class Vdp {
     update(tstates: number) {
         this.hCounter += (tstates * 3);
         this.generateInterrupts();
-        if (this.hCounter < (Vdp.TSTATES_PER_SCANLINE * 3)) return;
+        if (this.hCounter < (this.timing.tstatesPerScanline * 3)) return;
 
         // New scanline
-        this.hCounter -= (Vdp.TSTATES_PER_SCANLINE * 3);
-        this.firstHSync = this.firstVSync = true;
+        this.hCounter -= (this.timing.tstatesPerScanline * 3);
+        this.lineCounterDecremented = false;
+        this.firstHSync = true;
+        this.firstVSync = true;
 
         if (this.vCounter <= this.heightPixels) {
             if (this.lineCounter === 0) {
@@ -80,18 +85,12 @@ export class Vdp {
         }
 
         // Update vcounter
-        if (this.vCounter === 0xff) {
+        if (this.vCounter === this.timing.scanlinesPerFrame - 1) {
             // Next frame
             this.vCounter = 0;
-            this.vCounterJumped = false;
             this.vScrollBuffer = this.registers[9];
             this.lineCounter = this.registers[10];
-            this.frameInterruptPending = false;
             this.lineInterruptPending = false;
-        }
-        else if (!this.vCounterJumped && this.vCounter === 0xda) {
-            this.vCounterJumped = true;
-            this.vCounter = 0xd5;
         }
         else this.vCounter++;
     }
@@ -113,6 +112,20 @@ export class Vdp {
         if (this.lineInterruptPending && testBit(4, this.registers[0])) {
             this.requestedInterrupt = true;
         }
+    }
+
+    getVCounter(): number {
+        if (this.videoMode === VideoMode.NTSC) {
+            if (this.vCounter > 0xdb) return this.vCounter - 7;
+        }
+        else {
+            if (this.vCounter > 0xf3) return this.vCounter - 58;
+        }
+        return(this.vCounter - 1) & 0xff;
+    }
+
+    getHCounter(): number {
+        return Math.round((this.hCounterBuffer - 94) / 4);
     }
 
     renderSprites() {

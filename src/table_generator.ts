@@ -1,5 +1,5 @@
 import { Cpu } from "./cpu";
-import { Instruction, decodeBase, decodeEd, decodeCb, decodeIdx, decodeIdxcb, Decoded, BlockFunction, calculateExtraTstates } from "./decoder";
+import { calculateExtraTstates, decodeBase, decodeCb, Decoded, decodeEd, decodeIdx, decodeIdxcb } from "./decoder";
 
 export const generateInstructionTable = (cpu: Cpu): Function[] => {
     const baseTable = new Array<Function>(256);

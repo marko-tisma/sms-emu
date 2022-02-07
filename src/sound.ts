@@ -1,5 +1,5 @@
 import { parity } from "./alu";
-import { Sms } from "./ui/sms";
+import { Timing } from "./ui/sms";
 import { testBit } from "./util";
 
 export class Sound {
@@ -27,12 +27,13 @@ export class Sound {
     tstatesSinceLastSample = 0;
 
     constructor(
+        public sampleRate: number,
         public audioBuffer: Float32Array,
         public playAudio: Function,
-        public sampleRate: number
+        public timing: Timing
     ) {
-        this.samplesPerFrame = this.sampleRate / 60;
-        this.tstatesPerSample = Sms.TSTATES_PER_FRAME / this.samplesPerFrame;
+        this.samplesPerFrame = this.sampleRate / timing.fps;
+        this.tstatesPerSample = this.timing.tstatesPerFrame / this.samplesPerFrame;
         this.clocksPerSample = this.tstatesPerSample / 16;
         this.initVolumeTable();
     }
@@ -60,7 +61,7 @@ export class Sound {
             output += this.frequencyOutputs[i] * (this.volumeTable[this.volumeRegisters[i]]);
         }
         // Noise register
-        output += ((this.shiftRegister & 1) * this.volumeTable[this.volumeRegisters[3]]);
+        output += ((this.shiftRegister & 1) * this.volumeTable[this.volumeRegisters[3]]) << 1;
         this.audioBuffer[this.bufferIndex++] = output;
 
         const queuedFrames = this.bufferIndex / this.samplesPerFrame;

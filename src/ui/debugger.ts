@@ -59,7 +59,7 @@ export class Debugger {
 
     update(): void {
         this.updateState();
-        this.updateDisassembly(10);
+        this.updateDisassembly(100);
     }
 
     private updateDisassembly(instructionCount: number): void {

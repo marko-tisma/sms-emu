@@ -34,6 +34,10 @@ export class Bus {
 
     ram = new Uint8Array(Bus.RAM_SIZE);
     ports = new Uint8Array(256);
+
+    // Port registers
+    ioControl = 0xff;
+    memoryControl = 0xab;
     
     constructor(private cartridge: Cartridge, public vdp: Vdp, public sound: Sound) { }
 
@@ -51,6 +55,9 @@ export class Bus {
                 return this.cartridge.ram[address];
             }
             const page = this.framePages[frame];
+            if (page >= this.cartridge.pages) {
+                return this.cartridge.rom[(page & 0x3f) * Bus.PAGE_SIZE + address];
+            }
             return this.cartridge.rom[page * Bus.PAGE_SIZE + address];
         }
         else if (address < Bus.RAM_MIRROR_OFFSET) {
@@ -88,12 +95,12 @@ export class Bus {
             this.frame2RamPage = (value & 0x04) >>> 2;
         }
         else if (address === Bus.FRAME_2_FCR_OFFSET) {
-            this.framePages[2] = value & 0x3f;
+            this.framePages[2] = value & 0xff;
             // Value saved at address 0xdfff 
-            this.ram[0x1fff] = value & 0x3f;
+            this.ram[0x1fff] = value & 0xff;
         }
         else if (address < Bus.MEMORY_SIZE) {
-            this.framePages[address - Bus.FRAME_0_FCR_OFFSET] = value & 0x3f;
+            this.framePages[address - Bus.FRAME_0_FCR_OFFSET] = value & 0xff;
         }
     }
 
@@ -106,7 +113,7 @@ export class Bus {
         this.write8(address + 1, value >>> 8);
     }
 
-    readn(address: number, count: number) {
+    readn(address: number, count: number): number[] {
         const values = [];
         for (let i = 0; i < count; i++) {
             values.push(this.read8(address + i));
@@ -114,25 +121,37 @@ export class Bus {
         return values;
     }
 
-    in(port: number) {
-        port &= 0xff;
-        if (port === 0xdd) {
-            // Export console
-            const p = this.ports[0x3f];
-            return (p & 0x80) | ((p & 0x20) << 1) | ((this.ports[0xdd]) & 0x3f);
-        }
+    in(port: number): number {
         switch (port & 0xc1) {
-            case 0x40: return (this.vdp.vCounter - 1) & 0xff;
-            case 0x41: return 0;
+            case 0x00:
+            case 0x01: return 0xff;
+            case 0x40: return this.vdp.getVCounter();
+            case 0x41: return this.vdp.getHCounter();
             case 0x80: return this.vdp.readDataPort();
             case 0x81: return this.vdp.readControlPort();
-            default: return this.ports[port];
+            case 0xc0: return this.ports[0xdc];
+            case 0xc1: return (
+                // Export console 
+                (this.ioControl & 0x80) | 
+                ((this.ioControl & 0x20) << 1) | 
+                ((this.ports[0xdd]) & 0x3f)
+            );
+            default: return 0;
         }
     }
 
-    out(port: number, value: number) {
-        port &= 0xff;
+    out(port: number, value: number): void {
         switch (port & 0xc1) {
+            case 0x00:
+                this.memoryControl = value;
+                break;
+            case 0x01:
+                const th = this.ioControl & 0xa0;
+                this.ioControl = value;
+                if (th === 0 && (this.ioControl & 0xa0)) {
+                    this.vdp.hCounterBuffer = this.vdp.hCounter;
+                }
+                break;
             case 0x40:
             case 0x41:
                 this.sound!.write(value);

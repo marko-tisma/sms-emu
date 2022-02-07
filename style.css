@@ -87,7 +87,7 @@ body {
 }
 
 main {
-  margin-top: 60px;
+  margin-top: 30px;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -104,7 +104,7 @@ main {
 .button {
   margin: 8px 3px;
   font-family: 'Press Start 2P', cursive;
-  font-size: medium;
+  font-size: 15px;
   min-width: 240px;
   min-height: 45px;
   padding: 10px 10px;
@@ -127,13 +127,13 @@ main {
 #fps {
   margin: 8px;
   font-family: 'Press Start 2P', cursive;
-  font-size: medium;
+  font-size: 15px;
 }
 
 #rom_name {
   margin: 8px;
   font-family: 'Press Start 2P', cursive;
-  font-size: medium;
+  font-size: 15px;
 }
 
 #select_rom {
@@ -153,6 +153,7 @@ main {
 
 #rom_list > li {
   font-family: 'Press Start 2P', cursive;
+  font-size: 14px;
   background-color: gray;
   list-style: none;
   padding: 10px;

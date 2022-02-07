@@ -7,30 +7,58 @@ import { Controller } from "./controller";
 import { Debugger } from "./debugger";
 
 
+export enum VideoMode {
+	NTSC, PAL
+}
+
+export interface Timing {
+	fps: number
+	cpuClock: number,
+	tstatesPerFrame: number,
+	scanlinesPerFrame: number,
+	tstatesPerScanline: number
+}
 export class Sms {
 
 	// Timing information taken from https://www.smspower.org/forums/8161-SMSDisplayTiming
-	static readonly CPU_CLOCK = 3579545;
-	static readonly TSTATES_PER_FRAME = 59736;
+	static ntscTiming = {
+		fps: 60,
+		cpuClock: 3579545,
+		tstatesPerFrame: 59736,
+		scanlinesPerFrame: 262,
+		tstatesPerScanline: 228,
+	}
+
+	static palTiming = {
+		fps: 50,
+		cpuClock: 3546895,
+		tstatesPerFrame: 70937,
+		scanlinesPerFrame: 313,
+		tstatesPerScanline: 227
+	}
 
 	cpu: Cpu;
 	bus: Bus;
 	sound: Sound;
 	vdp: Vdp;
-
 	debugger: Debugger;
 	controller: Controller;
 
 	running = false;
+	frameSpeed: number;
+	timing: Timing;
 	tstatesFromLastFrame = 0;
 	animationRequestId = 0;
 
 	constructor(
-		rom: Uint8Array, frameBuffer: Uint8ClampedArray, drawFrame: Function,
+		rom: Uint8Array, videoMode: VideoMode,   
+		frameBuffer: Uint8ClampedArray, drawFrame: Function,
 		audioBuffer: Float32Array, playAudio: Function, sampleRate=44100
 	) {
-		this.vdp = new Vdp(frameBuffer, drawFrame);
-		this.sound = new Sound(audioBuffer, playAudio, sampleRate);
+		this.timing = videoMode === VideoMode.NTSC ? Sms.ntscTiming : Sms.palTiming;
+		this.frameSpeed = this.timing.fps / 60;
+		this.vdp = new Vdp(videoMode, frameBuffer, drawFrame, this.timing);
+		this.sound = new Sound(sampleRate, audioBuffer, playAudio, this.timing);
 		this.bus = new Bus(new Cartridge(rom), this.vdp, this.sound);
 		this.cpu = new Cpu(this.bus);
 		this.debugger = new Debugger(this);
@@ -41,7 +69,7 @@ export class Sms {
 		if (!this.running) return;
 
 		let tstatesElapsed = this.tstatesFromLastFrame;
-		while (tstatesElapsed < Sms.TSTATES_PER_FRAME) {
+		while (tstatesElapsed < this.timing.tstatesPerFrame * this.frameSpeed) {
 			if (this.debugger.breakpoints.has(this.cpu.pc)) {
 				this.debugger.startDebug();
 				return;
@@ -52,9 +80,8 @@ export class Sms {
 			this.cpu.bus.sound.update(tstates);
 			this.cpu.bus.vdp.update(tstates);
 		}
-		this.tstatesFromLastFrame = tstatesElapsed - Sms.TSTATES_PER_FRAME;
+		this.tstatesFromLastFrame = tstatesElapsed - this.timing.tstatesPerFrame * this.frameSpeed;
 		this.updateFps(timestamp);
-
 		this.animationRequestId = requestAnimationFrame(this.emulateFrame);
 	}
 
@@ -66,7 +93,7 @@ export class Sms {
 	}
 
 	updateFps(frameStart: DOMHighResTimeStamp): void {
-		const fps = 1000 / Math.max(1000 / 60, performance.now() - frameStart);
+		const fps = 1000 / Math.max(1000 / this.timing.fps, performance.now() - frameStart);
 		document.querySelector('#fps')!.innerHTML = `FPS: ${fps.toString().substring(0, 5)}`;
 	}
 
