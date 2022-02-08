@@ -54,9 +54,9 @@ export class Bus {
                 address += this.frame2RamPage * Bus.PAGE_SIZE;
                 return this.cartridge.ram[address];
             }
-            const page = this.framePages[frame];
+            let page = this.framePages[frame];
             if (page >= this.cartridge.pages) {
-                return this.cartridge.rom[(page & 0x3f) * Bus.PAGE_SIZE + address];
+                page &= this.cartridge.pages - 1;
             }
             return this.cartridge.rom[page * Bus.PAGE_SIZE + address];
         }
@@ -93,14 +93,11 @@ export class Bus {
         else if (address === Bus.FRAME_2_CB_OFFSET) {
             this.ramInFrame2 = !!(value & 0x08);
             this.frame2RamPage = (value & 0x04) >>> 2;
-        }
-        else if (address === Bus.FRAME_2_FCR_OFFSET) {
-            this.framePages[2] = value & 0xff;
-            // Value saved at address 0xdfff 
-            this.ram[0x1fff] = value & 0xff;
+            this.ram[0x1ffc] = value;
         }
         else if (address < Bus.MEMORY_SIZE) {
             this.framePages[address - Bus.FRAME_0_FCR_OFFSET] = value & 0xff;
+            this.ram[address - Bus.FRAME_0_FCR_OFFSET + 0x1ffd] = value;
         }
     }
 
