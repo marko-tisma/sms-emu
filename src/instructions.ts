@@ -917,3 +917,28 @@ export const ld_i_a = (cpu: Cpu) => {
         disassembly: () => 'ld i, a'
     }
 }
+
+export const ld_a_r = (cpu: Cpu) => {
+    return {
+        execute: () => {
+            cpu.a = cpu.r;
+            cpu.flags.s = !!(cpu.a & 0x80);
+            cpu.flags.z = !cpu.a;
+            cpu.flags.h = false;
+            cpu.flags.pv = cpu.iff2;
+            cpu.flags.n = false;
+            cpu.tstates += 9;
+        },
+        disassembly: () => 'ld a, r'
+    }
+}
+
+export const ld_r_a = (cpu: Cpu) => {
+    return {
+        execute: () => {
+            cpu.r = cpu.a;
+            cpu.tstates += 9;
+        },
+        disassembly: () => 'ld r, a'
+    }
+}

@@ -269,10 +269,15 @@ export const decodeEd = (op: number): Decoded => {
                 return get(ins.retn);
             case 6: return get(ins.im, { im: im[y] });
             case 7:
-                if (y === 0) return get(ins.ld_i_a);
-                if (y === 2) return get(ins.ld_a_i);
-                if (y === 4) return get(ins.rrd);
-                if (y === 5) return get(ins.rld);
+                switch (y) {
+                    case 0: return get(ins.ld_i_a);
+                    case 1: return get(ins.ld_r_a);
+                    case 2: return get(ins.ld_a_i);
+                    case 3: return get(ins.ld_a_r);
+                    case 4: return get(ins.rrd);
+                    case 5: return get(ins.rld);
+                    default: break;
+                }
                 break;
             default:
                 return get(ins.nop);

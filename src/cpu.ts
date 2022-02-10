@@ -27,6 +27,7 @@ export class Cpu {
     private _ix = new Register(2);
     private _iy = new Register(2);
     private _i = new Register(1);
+    private _r = new Register(1);
 
     private _sp = new Register(2);
     private _pc = new Register(2);
@@ -106,7 +107,7 @@ export class Cpu {
         else {
             this.instructionTable[op]();
         }
-
+        this.incrementRefreshRegister();
         return this.tstates;
     }
 
@@ -171,6 +172,14 @@ export class Cpu {
         this.pc += 2;
         return value;
     }
+
+    incrementRefreshRegister(): void {
+        this.r = (this.r & 0x80) | ((this.r + 1) & 0x7f);
+    }
+
+    get r(): number { return this._r.value; }
+
+    set r(value: number) { this._r.value = value; }
 
     get i(): number { return this._i.value; }
 
