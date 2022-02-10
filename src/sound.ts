@@ -50,7 +50,7 @@ export class Sound {
 
     update(tstates: number) {
         this.tstatesSinceLastSample += tstates;
-        if (this.tstatesSinceLastSample <= this.tstatesPerSample) return; 
+        if (this.tstatesSinceLastSample < this.tstatesPerSample) return; 
 
         // New sample
         this.tstatesSinceLastSample -= this.tstatesPerSample;
@@ -61,7 +61,7 @@ export class Sound {
             output += this.frequencyOutputs[i] * (this.volumeTable[this.volumeRegisters[i]]);
         }
         // Noise register
-        output += ((this.shiftRegister & 1) * this.volumeTable[this.volumeRegisters[3]]) << 1;
+        output += ((this.shiftRegister & 1) * this.volumeTable[this.volumeRegisters[3]]);
         this.audioBuffer[this.bufferIndex++] = output;
 
         const queuedFrames = this.bufferIndex / this.samplesPerFrame;
