@@ -1,0 +1,154 @@
+body {
+  font-family: Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-align: center;
+  height: 100vh;
+  background-color: black;
+  color: white;
+  margin: 0;
+  padding: 0;
+}
+
+.block {
+  display: block;
+}
+
+#emulator {
+  display: flex;
+  justify-content: center;
+  height: 100%;
+}
+
+.sidebar {
+  flex: 0 1 auto;
+  overflow-y: auto;
+}
+
+#disassembly {
+  font-family: 'Roboto Mono', monospace;
+  font-size: medium;
+  list-style-type: none;
+  text-align: left;
+  display: none;
+}
+
+#disassembly > li {
+  padding: 5px 5px;
+}
+
+#disassembly .breakpoint.current {
+  background-color: green;
+}
+
+#disassembly .breakpoint {
+  background-color: orange;
+}
+
+#disassembly .current {
+  background-color: dodgerblue;
+}
+
+#disassembly li:hover{
+  background-color: lightgray;
+}
+
+#state {
+  font-family: 'Roboto Mono', monospace;
+  font-size: medium;
+  list-style-type: none;
+  text-align: left;
+  display: none;
+}
+
+#state > li {
+  padding: 5px 5px;
+}
+
+.changed {
+  color: orange;
+}
+
+#debug_controls {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 5px 5px;
+  display: none;
+  overflow: auto;
+}
+
+#debug_controls > .button {
+  width: 100%;
+  max-width: 240px;
+}
+
+#mem_value {
+  font-family: 'Roboto Mono', monospace;
+  font-size: medium;
+  font-weight: 600;
+  text-align: center;
+  margin: 10px 10px;
+  display: block;
+}
+
+#show_mem {
+  font-size: medium;
+  font-weight: 600;
+  padding: 8px 8px;
+  margin-top: 30px;
+  min-width: 0;
+}
+
+main {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  height: 100%;
+  width: 70%;
+}
+
+#screen {
+  flex: 0 1 auto;
+  max-height: 100%;
+  margin: 2rem 2rem;
+  border-radius: 10px;
+}
+
+#button_container {
+  flex: 0 1 auto;
+  /* width: 768px; */
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.button {
+  margin: 8px 3px;
+  font-family: 'Press Start 2P', cursive;
+  font-size: medium;
+  flex: 0 1 240px;
+  height: 45px;
+  color: white;
+  background-color: royalblue;
+  border-color: royalblue;
+  border-radius: 4px;
+}
+
+.red {
+  background-color: maroon;
+  border-color:  maroon; 
+}
+
+.button:hover {
+  background-color: gray;
+  border-color: transparent;
+}
+
+#fps, #rom_name {
+  margin: 8px;
+  font-family: 'Press Start 2P', cursive;
+  font-size: medium;
+}
