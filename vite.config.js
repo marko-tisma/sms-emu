@@ -6,6 +6,7 @@ export default {
         outDir: 'docs',
         assetsDir: '.',
     },
+    base: '/sms-emu/',
     esbuild: {
         target: 'esnext'
     }
