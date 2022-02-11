@@ -19,32 +19,22 @@
           <ul id="state"></ul>
         </aside>
         <div id="debug_controls">
-          <button class="button red" id="step">step</button>
-          <button class="button red" id="continue">continue</button>
+          <button class="button red block" id="step">step</button>
+          <button class="button red block" id="continue">continue</button>
           <input type="text" id="show_mem" placeholder="address: $0000">
           <div id="mem_value"></div>
         </div>
       <main>
         <canvas id="screen"></canvas>
-        <div>
-          <span id="fps"></span>
-        </div>
+        <div id="fps"></div>
         <div id="rom_name"></div>
-        <div>
+        <div id="button_container">
           <button class="button" id="start">start</button>
-          <div id="select_rom">
-            <button class="button">list ROM</button>
-            <div id="rom_list"></div>
-          </div>
-          <button class="button" id="browse_rom">browse ROM</button>
-        </div>
-        <div>
           <button class="button" id="reset">reset</button>
+          <button class="button" id="browse_rom">browse ROM</button>
+          <button class="button" id="debug">debug</button>
           <button class="button" id="toggle_video_mode">video mode</button>
           <button class="button red" id="toggle_sound">toggle sound</button>
-        </div>
-          <button class="button" id="debug">debug</button>
-        <div>
         </div>
       </main>
     </div>

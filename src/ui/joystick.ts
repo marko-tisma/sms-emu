@@ -4,7 +4,7 @@ enum Button {
     UP, DOWN, LEFT, RIGHT, A, B
 }
 
-export class Controller {
+export class Joystick {
 
     // Bit set to 0 while button is pressed and to 1 otherwise
     pressedState = 0xff;

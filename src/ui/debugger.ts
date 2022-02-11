@@ -18,7 +18,7 @@ export class Debugger {
     showDebugUi(): void {
         document.getElementById('disassembly')!.style.display = 'inline';
         document.getElementById('state')!.style.display = 'inline';
-        document.getElementById('debug_controls')!.style.display = 'flex';
+        document.getElementById('debug_controls')!.style.display = 'inline';
     }
 
     hideDebugUi(): void {
@@ -59,7 +59,7 @@ export class Debugger {
 
     update(): void {
         this.updateState();
-        this.updateDisassembly(100);
+        this.updateDisassembly(50);
     }
 
     private updateDisassembly(instructionCount: number): void {

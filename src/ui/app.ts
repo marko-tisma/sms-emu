@@ -2,15 +2,8 @@ import "../../style.css";
 import { Sms, VideoMode } from "./sms";
 
 const app = async () => {
-	const demoRoms = [
-		{ name: 'astroforce.sms', videoMode: VideoMode.NTSC},
-		{ name: 'bad_apple.sms', videoMode: VideoMode.NTSC},
-		{ name: 'GenesisProject-Lambo.sms', videoMode: VideoMode.PAL},
-		{ name: 'sub_rescue-0.3.sms', videoMode: VideoMode.NTSC},
-	];
-	const defaultRom = demoRoms[0];
-	let currentRomName = defaultRom.name;
-	let currentRomData = await fetchRomData(defaultRom.name);
+	let currentRomName = 'astroforce.sms'
+	let currentRomData = await fetchRomData(currentRomName);
 
 	let videoMode = VideoMode.NTSC;
 	let canvas = <HTMLCanvasElement>document.querySelector('#screen');
@@ -28,7 +21,7 @@ const app = async () => {
 	let soundEnabled = false;
 
 	initUi();
-	setVideoMode(defaultRom.videoMode);
+	setVideoMode(videoMode);
 	let sms = new Sms(
 		currentRomData, videoMode, imageData.data, drawFrame,
 		audioBuffer.getChannelData(0), playAudio, sampleRate
@@ -47,7 +40,6 @@ const app = async () => {
 	}
 
 	function drawFrame(): void {
-		const ctx = canvas.getContext('2d')!;
 		ctx.putImageData(imageData, 0, 0);
 		ctx.drawImage(
 			ctx.canvas, 0, 0,
@@ -62,11 +54,10 @@ const app = async () => {
 	}
 
 	function initUi(): void {
-		initRomList();
 		initButtons();
 		initScreen();
 		initKeyListeners();
-		document.getElementById('rom_name')!.innerText = `ROM: ${defaultRom.name}`;
+		document.getElementById('rom_name')!.innerText = `ROM: ${currentRomName}`
 	}
 
 	function initScreen(): void {
@@ -78,16 +69,34 @@ const app = async () => {
 		drawFrame();
 		canvas.addEventListener('click', (e) => {
 			const count = e.detail;
-			if (count === 2) canvas.requestFullscreen();
+			if (count === 2) {
+				if (document.fullscreenElement === null) {
+					canvas.requestFullscreen();
+				}
+				else {
+					document.exitFullscreen();
+				}
+			}
 		});
 	}
 
 	function initKeyListeners(): void {
 		document.addEventListener('keydown', (e) => {
-			sms.controller.press(e.key);
+			sms.joystick.press(e.key);
 		});
 		document.addEventListener('keyup', (e) => {
-			sms.controller.release(e.key);
+			sms.joystick.release(e.key);
+		});
+		document.addEventListener('keydown', (e) => {
+			if (
+				e.key === ' ' || 
+				e.key === 'ArrowUp' ||
+				e.key === 'ArrowDown' ||
+				e.key === 'ArrowLeft' ||
+				e.key === 'ArrowRight'
+			) {
+				e.preventDefault();
+			} 
 		});
 	}
 
@@ -101,23 +110,23 @@ const app = async () => {
 		document.querySelector('#reset')?.addEventListener('click', () => {
 			loadRom(currentRomData, currentRomName);
 		});
-		document.querySelector('#toggle_sound')!.addEventListener('click', () => {
+		document.querySelector('#toggle_sound')?.addEventListener('click', () => {
 			toggleSound();
 		});
 		document.querySelector('#browse_rom')?.addEventListener('click', () => {
 			browseRom();
 		});
-		document.querySelector('#debug')!.addEventListener('click', () => {
+		document.querySelector('#debug')?.addEventListener('click', () => {
 			sms.debugger.startDebug();
 			stopAudio();
 		});
-		document.querySelector('#step')!.addEventListener('click', () => {
+		document.querySelector('#step')?.addEventListener('click', () => {
 			sms.debugger.step();
 		});
-		document.querySelector('#continue')!.addEventListener('click', () => {
+		document.querySelector('#continue')?.addEventListener('click', () => {
 			sms.debugger.continue();
 		});
-		document.querySelector('#show_mem')!.addEventListener('change', (e: Event) => {
+		document.querySelector('#show_mem')?.addEventListener('change', (e: Event) => {
 			sms.debugger.showMemory(e);
 		});
 		document.querySelectorAll("button").forEach(item => {
@@ -135,9 +144,9 @@ const app = async () => {
 
 	function toggleSound(): void {
 		soundEnabled = !soundEnabled;
-		const toggleSound = document.querySelector('#toggle_sound')!;
-		if (soundEnabled) toggleSound.classList.remove('red');
-		else toggleSound.classList.add('red');
+		const toggleSound = document.querySelector('#toggle_sound');
+		if (soundEnabled) toggleSound?.classList.remove('red');
+		else toggleSound?.classList.add('red');
 	}
 
 	function loadRom(rom: Uint8Array, name: string): void {
@@ -156,40 +165,6 @@ const app = async () => {
 		sms.run();
 	}
 
-	function initRomList(): void {
-		const romList = <HTMLDivElement>document.querySelector('#rom_list')!;
-		demoRoms.forEach(rom => {
-			const li = document.createElement('li');
-			li.innerText = rom.name;
-			li.addEventListener('click', async () => {
-				const r = await fetchRomData(rom.name);
-				setVideoMode(rom.videoMode);
-				loadRom(r, rom.name);
-			});
-			romList.appendChild(li);
-		});
-
-		document.querySelector("#select_rom > button")?.addEventListener('click', () => {
-			toggleRomList();
-		});
-
-		document.addEventListener('click', (e: Event) => {
-			if (!(e.target as Element).matches('#select_rom > button')) {
-				romList.style.display = 'none';
-			}
-		});
-	}
-
-	function toggleRomList(): void {
-		const romList = <HTMLDivElement>document.querySelector('#rom_list')!;
-		if (!romList.style.display || romList.style.display === 'none') {
-			romList.style.display = 'block';
-		}
-		else {
-			romList.style.display = 'none';
-		}
-	}
-
 	function browseRom(): void {
 		const input = document.createElement('input');
 		input.type = 'file';
@@ -205,8 +180,8 @@ const app = async () => {
 		input.dispatchEvent(new MouseEvent('click'));
 	}
 
-	async function fetchRomData(romName: string) {
-		const url = `http://localhost:3000/rom/demo/${romName}`;
+	async function fetchRomData(name: string) {
+		const url = `http://localhost:3000/rom/${name}`;
 		const response = await fetch(url);
 		if (!response.ok) {
 			throw new Error(`File ${url} doesn't exist`);

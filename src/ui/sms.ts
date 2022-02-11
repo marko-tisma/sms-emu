@@ -3,7 +3,7 @@ import { Cartridge } from "../cartridge";
 import { Cpu } from "../cpu";
 import { Sound } from "../sound";
 import { Vdp } from "../vdp";
-import { Controller } from "./controller";
+import { Joystick } from "./joystick";
 import { Debugger } from "./debugger";
 
 
@@ -42,7 +42,7 @@ export class Sms {
 	sound: Sound;
 	vdp: Vdp;
 	debugger: Debugger;
-	controller: Controller;
+	joystick: Joystick;
 
 	running = false;
 	frameSpeed: number;
@@ -62,14 +62,15 @@ export class Sms {
 		this.bus = new Bus(new Cartridge(rom), this.vdp, this.sound);
 		this.cpu = new Cpu(this.bus);
 		this.debugger = new Debugger(this);
-		this.controller = new Controller(this);
+		this.joystick = new Joystick(this);
 	}
 
 	emulateFrame = (timestamp: DOMHighResTimeStamp): void => {
 		if (!this.running) return;
 
 		let tstatesElapsed = this.tstatesFromLastFrame;
-		while (tstatesElapsed < this.timing.tstatesPerFrame * this.frameSpeed) {
+		const tstatesThisFrame = this.timing.tstatesPerFrame * this.frameSpeed;
+		while (tstatesElapsed < tstatesThisFrame) {
 			if (this.debugger.breakpoints.has(this.cpu.pc)) {
 				this.debugger.startDebug();
 				return;
@@ -80,7 +81,7 @@ export class Sms {
 			this.cpu.bus.sound.update(tstates);
 			this.cpu.bus.vdp.update(tstates);
 		}
-		this.tstatesFromLastFrame = tstatesElapsed - this.timing.tstatesPerFrame * this.frameSpeed;
+		this.tstatesFromLastFrame = tstatesElapsed - tstatesThisFrame;
 		this.updateFps(timestamp);
 		this.animationRequestId = requestAnimationFrame(this.emulateFrame);
 	}
