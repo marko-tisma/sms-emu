@@ -2,7 +2,8 @@ export default {
     // config options
     build: {
         minify: false,
-        target: 'esnext'
+        target: 'esnext',
+        outDir: 'docs'
     },
     esbuild: {
         target: 'esnext'
