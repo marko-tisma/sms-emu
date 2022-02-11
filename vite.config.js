@@ -3,7 +3,8 @@ export default {
     build: {
         minify: false,
         target: 'esnext',
-        outDir: 'docs'
+        outDir: 'docs',
+        assetsDir: '.',
     },
     esbuild: {
         target: 'esnext'

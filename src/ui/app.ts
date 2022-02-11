@@ -181,7 +181,7 @@ const app = async () => {
 	}
 
 	async function fetchRomData(name: string) {
-		const url = `https://marko-tisma.github.io/sms-emu/rom/${name}`;
+		const url = `https://marko-tisma.github.io/sms-emu/${name}`;
 		const response = await fetch(url);
 		if (!response.ok) {
 			throw new Error(`File ${url} doesn't exist`);
