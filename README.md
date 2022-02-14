@@ -2,9 +2,10 @@
 Sega Master System emulator built with TypeScript\
 Try it out on: https://marko-tisma.github.io/sms-emu
 
-## Prerequisites
+## Getting started
+### Prerequisites
 - npm version 8.1.0 or above
-## Installation
+### Installation
 1. Clone the repo
   ```sh
   git clone https://github.com/marko-tisma/sms-emu.git
@@ -15,15 +16,15 @@ Try it out on: https://marko-tisma.github.io/sms-emu
   npm install
   ```
 ## Usage
-- Start a local dev server
+### Start a local dev server
   ```sh
   npm run dev
   ```
-- Build sources
+### Build sources
   ```sh
   npm run build
   ```
-- Preview built sources
+### Preview built sources
   ```sh
   npm run serve
   ```
