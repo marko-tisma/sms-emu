@@ -42,7 +42,7 @@ const p$1 = function polyfill() {
     }
 };true&&p$1();
 
-var style = '';
+var style = /* #__PURE__ */ (() => "body {\n  font-family: Avenir, Helvetica, Arial, sans-serif;\n  -webkit-font-smoothing: antialiased;\n  -moz-osx-font-smoothing: grayscale;\n  text-align: center;\n  height: 100vh;\n  background-color: black;\n  color: white;\n  margin: 0;\n  padding: 0;\n}\n\n.block {\n  display: block;\n}\n\n#emulator {\n  display: flex;\n  justify-content: center;\n  height: 100%;\n}\n\n.sidebar {\n  flex: 0 1 auto;\n  overflow-y: auto;\n}\n\n#disassembly {\n  font-family: 'Roboto Mono', monospace;\n  font-size: medium;\n  list-style-type: none;\n  text-align: left;\n  display: none;\n}\n\n#disassembly > li {\n  padding: 5px 5px;\n}\n\n#disassembly .breakpoint.current {\n  background-color: green;\n}\n\n#disassembly .breakpoint {\n  background-color: orange;\n}\n\n#disassembly .current {\n  background-color: dodgerblue;\n}\n\n#disassembly li:hover{\n  background-color: lightgray;\n}\n\n#state {\n  font-family: 'Roboto Mono', monospace;\n  font-size: medium;\n  list-style-type: none;\n  text-align: left;\n  display: none;\n}\n\n#state > li {\n  padding: 5px 5px;\n}\n\n.changed {\n  color: orange;\n}\n\n#debug_controls {\n  flex: 0 1 auto;\n  min-width: 0;\n  margin: 5px 5px;\n  display: none;\n  overflow: auto;\n}\n\n#debug_controls > .button {\n  width: 100%;\n  max-width: 240px;\n}\n\n#mem_value {\n  font-family: 'Roboto Mono', monospace;\n  font-size: medium;\n  font-weight: 600;\n  text-align: center;\n  margin: 10px 10px;\n  display: block;\n}\n\n#show_mem {\n  font-size: medium;\n  font-weight: 600;\n  padding: 8px 8px;\n  margin-top: 30px;\n  min-width: 0;\n}\n\nmain {\n  flex: 0 1 auto;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  justify-content: space-evenly;\n  height: 100%;\n  width: 70%;\n}\n\n#screen_container {\n  max-height: 70%;\n}\n\n#screen {\n  border-radius: 10px;\n  max-height: 100%;\n  max-width: 100%;\n}\n\n#button_container {\n  flex: 0 1 auto;\n  margin-top: 16px;\n  display: flex;\n  flex-wrap: wrap;\n  justify-content: center;\n}\n\n.button {\n  margin: 8px 3px;\n  font-family: 'Press Start 2P', cursive;\n  font-size: medium;\n  flex: 0 1 240px;\n  height: 45px;\n  color: white;\n  background-color: royalblue;\n  border-color: royalblue;\n  border-radius: 4px;\n}\n\n.red {\n  background-color: maroon;\n  border-color:  maroon; \n}\n\n.button:hover {\n  background-color: gray;\n  border-color: transparent;\n}\n\n#fps, #rom_name {\n  margin: 8px;\n  font-family: 'Press Start 2P', cursive;\n  font-size: small;\n}")();
 
 class Bus {
   constructor(cartridge, vdp, sound) {
@@ -2000,25 +2000,37 @@ const rewriteInstruction = (cpu, { instructionConstructor, params }) => {
     paramsVar = paramsVar.trim();
   const instruction = instructionConstructor(cpu, params);
   let executeBody = instruction.execute.toString();
-  executeBody = executeBody.slice(executeBody.indexOf("{") + 1, executeBody.lastIndexOf("}"));
+  executeBody = executeBody.slice(
+    executeBody.indexOf("{") + 1,
+    executeBody.lastIndexOf("}")
+  );
   executeBody = executeBody.replaceAll(cpuVar, "this");
   if (params) {
     const stringParams = ["src", "dst", "rp", "rs", "idx"];
     stringParams.map((param) => {
       if (params[param]) {
-        executeBody = executeBody.replaceAll(`${paramsVar}.${param}`, `'${params[param]}'`);
+        executeBody = executeBody.replaceAll(
+          `${paramsVar}.${param}`,
+          `'${params[param]}'`
+        );
       }
     });
     const numberParams = ["im", "y", "address"];
     numberParams.map((param) => {
       if (params[param] !== void 0) {
-        executeBody = executeBody.replaceAll(`${paramsVar}.${param}`, `${params[param]}`);
+        executeBody = executeBody.replaceAll(
+          `${paramsVar}.${param}`,
+          `${params[param]}`
+        );
       }
     });
     const functionParams = ["bli", "rot", "cc", "acc"];
     functionParams.map((param) => {
       if (params[param]) {
-        executeBody = executeBody.replaceAll(`${paramsVar}.${param}`, `(${params[param]})`);
+        executeBody = executeBody.replaceAll(
+          `${paramsVar}.${param}`,
+          `(${params[param]})`
+        );
       }
     });
   }
@@ -2027,9 +2039,15 @@ const rewriteInstruction = (cpu, { instructionConstructor, params }) => {
   }
   for (let functionName of Object.keys(cpu.alu)) {
     if (executeBody.includes(`alu.${functionName}(`)) {
-      executeBody = executeBody.replaceAll(`alu.${functionName}(`, `this.alu.${functionName}(`);
+      executeBody = executeBody.replaceAll(
+        `alu.${functionName}(`,
+        `this.alu.${functionName}(`
+      );
     } else if (executeBody.includes(`${functionName}(`)) {
-      executeBody = executeBody.replaceAll(`${functionName}(`, `this.alu.${functionName}(`);
+      executeBody = executeBody.replaceAll(
+        `${functionName}(`,
+        `this.alu.${functionName}(`
+      );
     }
   }
   let tstatesToAdd = calculateExtraTstates({ instructionConstructor, params });
@@ -2037,8 +2055,7 @@ const rewriteInstruction = (cpu, { instructionConstructor, params }) => {
   return Function(executeBody).bind(cpu);
 };
 
-var RegisterName;
-(function(RegisterName2) {
+var RegisterName = /* @__PURE__ */ ((RegisterName2) => {
   RegisterName2[RegisterName2["B"] = 0] = "B";
   RegisterName2[RegisterName2["C"] = 1] = "C";
   RegisterName2[RegisterName2["D"] = 2] = "D";
@@ -2047,12 +2064,8 @@ var RegisterName;
   RegisterName2[RegisterName2["L"] = 5] = "L";
   RegisterName2[RegisterName2["F"] = 6] = "F";
   RegisterName2[RegisterName2["A"] = 7] = "A";
-})(RegisterName || (RegisterName = {}));
-var DecodingMode;
-(function(DecodingMode2) {
-  DecodingMode2[DecodingMode2["TABLE"] = 0] = "TABLE";
-  DecodingMode2[DecodingMode2["DECODE"] = 1] = "DECODE";
-})(DecodingMode || (DecodingMode = {}));
+  return RegisterName2;
+})(RegisterName || {});
 class Cpu {
   constructor(bus) {
     this.bus = bus;
@@ -2061,7 +2074,7 @@ class Cpu {
     this.sp = 57328;
     this.bus.out(220, 255);
     this.bus.out(221, 255);
-    if (this.decodingMode === 0) {
+    if (this.decodingMode === 0 /* TABLE */) {
       this.instructionTable = generateInstructionTable(this);
     }
   }
@@ -2102,7 +2115,7 @@ class Cpu {
   handlingReset = false;
   iff1 = false;
   iff2 = false;
-  decodingMode = 0;
+  decodingMode = 0 /* TABLE */;
   instructionTable = [];
   alu = alu;
   RegisterName = RegisterName;
@@ -2114,7 +2127,7 @@ class Cpu {
       return 4;
     let op = this.next8();
     let instruction;
-    if (this.decodingMode === 1) {
+    if (this.decodingMode === 1 /* DECODE */) {
       let decoded = decode(op, this);
       instruction = decoded.instructionConstructor(this, decoded.params);
       instruction.execute();
@@ -2257,74 +2270,74 @@ class Cpu {
     this.bus.write8(this.hl, value);
   }
   get af() {
-    return (this.registers[7].value << 8) + this.f;
+    return (this.registers[7 /* A */].value << 8) + this.f;
   }
   set af(value) {
     this.f = value & 255;
-    this.registers[7].value = value >>> 8;
+    this.registers[7 /* A */].value = value >>> 8;
   }
   get bc() {
-    return (this.registers[0].value << 8) + this.registers[1].value;
+    return (this.registers[0 /* B */].value << 8) + this.registers[1 /* C */].value;
   }
   set bc(value) {
-    this.registers[1].value = value & 255;
-    this.registers[0].value = value >>> 8;
+    this.registers[1 /* C */].value = value & 255;
+    this.registers[0 /* B */].value = value >>> 8;
   }
   get de() {
-    return (this.registers[2].value << 8) + this.registers[3].value;
+    return (this.registers[2 /* D */].value << 8) + this.registers[3 /* E */].value;
   }
   set de(value) {
-    this.registers[3].value = value & 255;
-    this.registers[2].value = value >>> 8;
+    this.registers[3 /* E */].value = value & 255;
+    this.registers[2 /* D */].value = value >>> 8;
   }
   get hl() {
-    return (this.registers[4].value << 8) + this.registers[5].value;
+    return (this.registers[4 /* H */].value << 8) + this.registers[5 /* L */].value;
   }
   set hl(value) {
-    this.registers[5].value = value & 255;
-    this.registers[4].value = value >>> 8;
+    this.registers[5 /* L */].value = value & 255;
+    this.registers[4 /* H */].value = value >>> 8;
   }
   get a() {
-    return this.registers[7].value;
+    return this.registers[7 /* A */].value;
   }
   set a(value) {
-    this.registers[7].value = value;
+    this.registers[7 /* A */].value = value;
   }
   get b() {
-    return this.registers[0].value;
+    return this.registers[0 /* B */].value;
   }
   set b(value) {
-    this.registers[0].value = value;
+    this.registers[0 /* B */].value = value;
   }
   get c() {
-    return this.registers[1].value;
+    return this.registers[1 /* C */].value;
   }
   set c(value) {
-    this.registers[1].value = value;
+    this.registers[1 /* C */].value = value;
   }
   get d() {
-    return this.registers[2].value;
+    return this.registers[2 /* D */].value;
   }
   set d(value) {
-    this.registers[2].value = value;
+    this.registers[2 /* D */].value = value;
   }
   get e() {
-    return this.registers[3].value;
+    return this.registers[3 /* E */].value;
   }
   set e(value) {
-    this.registers[3].value = value;
+    this.registers[3 /* E */].value = value;
   }
   get h() {
-    return this.registers[4].value;
+    return this.registers[4 /* H */].value;
   }
   set h(value) {
-    this.registers[4].value = value;
+    this.registers[4 /* H */].value = value;
   }
   get l() {
-    return this.registers[5].value;
+    return this.registers[5 /* L */].value;
   }
   set l(value) {
-    this.registers[5].value = value;
+    this.registers[5 /* L */].value = value;
   }
   get f() {
     let f = 0;
@@ -2341,7 +2354,7 @@ class Cpu {
       this.flags[flag] = !!(value & mask);
       mask >>>= 1;
     }
-    this.registers[6].value = value;
+    this.registers[6 /* F */].value = value;
   }
   get pc() {
     return this._pc.value;
@@ -2780,38 +2793,29 @@ class Vdp {
   }
 }
 
-var Button;
-(function(Button2) {
-  Button2[Button2["UP"] = 0] = "UP";
-  Button2[Button2["DOWN"] = 1] = "DOWN";
-  Button2[Button2["LEFT"] = 2] = "LEFT";
-  Button2[Button2["RIGHT"] = 3] = "RIGHT";
-  Button2[Button2["A"] = 4] = "A";
-  Button2[Button2["B"] = 5] = "B";
-})(Button || (Button = {}));
 class Joystick {
   constructor(sms) {
     this.sms = sms;
   }
   pressedState = 255;
   port = 220;
-  pauseButtons = new Set(["p", "Enter"]);
+  pauseButtons = /* @__PURE__ */ new Set(["p", "Enter"]);
   keyMap = {
-    "ArrowUp": 0,
-    "ArrowDown": 1,
-    "ArrowLeft": 2,
-    "ArrowRight": 3,
-    "z": 4,
-    " ": 4,
-    "x": 5
+    "ArrowUp": 0 /* UP */,
+    "ArrowDown": 1 /* DOWN */,
+    "ArrowLeft": 2 /* LEFT */,
+    "ArrowRight": 3 /* RIGHT */,
+    "z": 4 /* A */,
+    " ": 4 /* A */,
+    "x": 5 /* B */
   };
   buttonStateBit = {
-    [0]: 0,
-    [1]: 1,
-    [2]: 2,
-    [3]: 3,
-    [4]: 4,
-    [5]: 5
+    [0 /* UP */]: 0,
+    [1 /* DOWN */]: 1,
+    [2 /* LEFT */]: 2,
+    [3 /* RIGHT */]: 3,
+    [4 /* A */]: 4,
+    [5 /* B */]: 5
   };
   press(key) {
     if (this.pauseButtons.has(key))
@@ -2838,7 +2842,7 @@ class Debugger {
     this.state = { ...this.getCpuState(), ...this.getVdpState() };
     this.hideDebugUi();
   }
-  breakpoints = new Set();
+  breakpoints = /* @__PURE__ */ new Set();
   disassembly = [];
   state;
   showDebugUi() {
@@ -3012,11 +3016,11 @@ class Debugger {
   }
 }
 
-var VideoMode;
-(function(VideoMode2) {
+var VideoMode = /* @__PURE__ */ ((VideoMode2) => {
   VideoMode2[VideoMode2["NTSC"] = 0] = "NTSC";
   VideoMode2[VideoMode2["PAL"] = 1] = "PAL";
-})(VideoMode || (VideoMode = {}));
+  return VideoMode2;
+})(VideoMode || {});
 class Sms {
   static ntscTiming = {
     fps: 60,
@@ -3039,13 +3043,14 @@ class Sms {
   debugger;
   joystick;
   running = false;
-  frameSpeed;
   timing;
   tstatesFromLastFrame = 0;
   animationRequestId = 0;
+  lastTimestamp = 0;
+  tstatesPerMs;
   constructor(rom, videoMode, frameBuffer, drawFrame, audioBuffer, playAudio, sampleRate = 44100) {
-    this.timing = videoMode === 0 ? Sms.ntscTiming : Sms.palTiming;
-    this.frameSpeed = this.timing.fps / 60;
+    this.timing = videoMode === 0 /* NTSC */ ? Sms.ntscTiming : Sms.palTiming;
+    this.tstatesPerMs = this.timing.tstatesPerFrame * this.timing.fps / 1e3;
     this.vdp = new Vdp(videoMode, frameBuffer, drawFrame, this.timing);
     this.sound = new Sound(sampleRate, audioBuffer, playAudio, this.timing);
     this.bus = new Bus(new Cartridge(rom), this.vdp, this.sound);
@@ -3056,9 +3061,19 @@ class Sms {
   emulateFrame = (timestamp) => {
     if (!this.running)
       return;
-    let tstatesElapsed = this.tstatesFromLastFrame;
-    const tstatesThisFrame = this.timing.tstatesPerFrame * this.frameSpeed;
-    while (tstatesElapsed < tstatesThisFrame) {
+    if (this.lastTimestamp === 0) {
+      this.lastTimestamp = timestamp;
+      this.animationRequestId = requestAnimationFrame(this.emulateFrame);
+      return;
+    }
+    let deltaMs = timestamp - this.lastTimestamp;
+    this.lastTimestamp = timestamp;
+    const maxMs = 1e3 / this.timing.fps * 2;
+    if (deltaMs > maxMs)
+      deltaMs = maxMs;
+    const tstatesToEmulate = deltaMs * this.tstatesPerMs + this.tstatesFromLastFrame;
+    let tstatesElapsed = 0;
+    while (tstatesElapsed < tstatesToEmulate) {
       if (this.debugger.breakpoints.has(this.cpu.pc)) {
         this.debugger.startDebug();
         return;
@@ -3068,7 +3083,7 @@ class Sms {
       this.cpu.bus.sound.update(tstates);
       this.cpu.bus.vdp.update(tstates);
     }
-    this.tstatesFromLastFrame = tstatesElapsed - tstatesThisFrame;
+    this.tstatesFromLastFrame = tstatesElapsed - tstatesToEmulate;
     this.updateFps(timestamp);
     this.animationRequestId = requestAnimationFrame(this.emulateFrame);
   };
@@ -3076,6 +3091,8 @@ class Sms {
     if (this.running)
       return;
     this.running = true;
+    this.lastTimestamp = 0;
+    this.tstatesFromLastFrame = 0;
     this.debugger.hideDebugUi();
     this.animationRequestId = requestAnimationFrame(this.emulateFrame);
   }
@@ -3102,7 +3119,15 @@ const app = async () => {
   let soundEnabled = false;
   initUi();
   setVideoMode(videoMode);
-  let sms = new Sms(currentRomData, videoMode, imageData.data, drawFrame, audioBuffer.getChannelData(0), playAudio, sampleRate);
+  let sms = new Sms(
+    currentRomData,
+    videoMode,
+    imageData.data,
+    drawFrame,
+    audioBuffer.getChannelData(0),
+    playAudio,
+    sampleRate
+  );
   function playAudio() {
     if (!soundEnabled)
       return;
@@ -3113,7 +3138,13 @@ const app = async () => {
   }
   function drawFrame() {
     ctx.putImageData(imageData, 0, 0);
-    ctx.drawImage(ctx.canvas, 0, 0, ctx.canvas.width * canvasScale, ctx.canvas.height * canvasScale);
+    ctx.drawImage(
+      ctx.canvas,
+      0,
+      0,
+      ctx.canvas.width * canvasScale,
+      ctx.canvas.height * canvasScale
+    );
   }
   function setVideoMode(mode) {
     videoMode = mode;
@@ -3208,7 +3239,15 @@ const app = async () => {
       sms.running = false;
       cancelAnimationFrame(sms.animationRequestId);
     }
-    sms = new Sms(rom, videoMode, imageData.data, drawFrame, audioBuffer.getChannelData(0), playAudio, sampleRate);
+    sms = new Sms(
+      rom,
+      videoMode,
+      imageData.data,
+      drawFrame,
+      audioBuffer.getChannelData(0),
+      playAudio,
+      sampleRate
+    );
     document.getElementById("rom_name").innerText = `ROM: ${name}`;
     currentRomData = rom;
     currentRomName = name;

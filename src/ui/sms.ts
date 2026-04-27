@@ -45,10 +45,11 @@ export class Sms {
 	joystick: Joystick;
 
 	running = false;
-	frameSpeed: number;
 	timing: Timing;
 	tstatesFromLastFrame = 0;
 	animationRequestId = 0;
+	lastTimestamp = 0;
+	tstatesPerMs: number;
 
 	constructor(
 		rom: Uint8Array, videoMode: VideoMode,   
@@ -56,7 +57,7 @@ export class Sms {
 		audioBuffer: Float32Array, playAudio: Function, sampleRate=44100
 	) {
 		this.timing = videoMode === VideoMode.NTSC ? Sms.ntscTiming : Sms.palTiming;
-		this.frameSpeed = this.timing.fps / 60;
+		this.tstatesPerMs = this.timing.tstatesPerFrame * this.timing.fps / 1000;
 		this.vdp = new Vdp(videoMode, frameBuffer, drawFrame, this.timing);
 		this.sound = new Sound(sampleRate, audioBuffer, playAudio, this.timing);
 		this.bus = new Bus(new Cartridge(rom), this.vdp, this.sound);
@@ -68,9 +69,22 @@ export class Sms {
 	emulateFrame = (timestamp: DOMHighResTimeStamp): void => {
 		if (!this.running) return;
 
-		let tstatesElapsed = this.tstatesFromLastFrame;
-		const tstatesThisFrame = this.timing.tstatesPerFrame * this.frameSpeed;
-		while (tstatesElapsed < tstatesThisFrame) {
+		if (this.lastTimestamp === 0) {
+			this.lastTimestamp = timestamp;
+			this.animationRequestId = requestAnimationFrame(this.emulateFrame);
+			return;
+		}
+
+		let deltaMs = timestamp - this.lastTimestamp;
+		this.lastTimestamp = timestamp;
+
+		// Cap to avoid spiral of death after tab suspension or long pauses
+		const maxMs = 1000 / this.timing.fps * 2;
+		if (deltaMs > maxMs) deltaMs = maxMs;
+
+		const tstatesToEmulate = deltaMs * this.tstatesPerMs + this.tstatesFromLastFrame;
+		let tstatesElapsed = 0;
+		while (tstatesElapsed < tstatesToEmulate) {
 			if (this.debugger.breakpoints.has(this.cpu.pc)) {
 				this.debugger.startDebug();
 				return;
@@ -81,7 +95,7 @@ export class Sms {
 			this.cpu.bus.sound.update(tstates);
 			this.cpu.bus.vdp.update(tstates);
 		}
-		this.tstatesFromLastFrame = tstatesElapsed - tstatesThisFrame;
+		this.tstatesFromLastFrame = tstatesElapsed - tstatesToEmulate;
 		this.updateFps(timestamp);
 		this.animationRequestId = requestAnimationFrame(this.emulateFrame);
 	}
@@ -89,6 +103,8 @@ export class Sms {
 	run(): void {
 		if (this.running) return;
 		this.running = true;
+		this.lastTimestamp = 0;
+		this.tstatesFromLastFrame = 0;
 		this.debugger.hideDebugUi();
 		this.animationRequestId = requestAnimationFrame(this.emulateFrame);
 	}
