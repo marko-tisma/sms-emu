@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && cp ./rom/* ./docs/",
+    "benchmark:decoding": "tsc -p tsconfig.benchmark.json && node .benchmark-dist/benchmark/decoding_benchmark.js",
     "serve": "vite preview"
   },
   "devDependencies": {

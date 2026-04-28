@@ -111,6 +111,11 @@ const rewriteInstruction = (cpu: Cpu, {instructionConstructor, params}: Decoded)
                 `alu.${functionName}(`, `this.alu.${functionName}(`
             );
         }
+        else if (executeBody.includes(`exports.${functionName})(`)) {
+            executeBody = executeBody.replaceAll(
+                `(0, exports.${functionName})(`, `this.alu.${functionName}(`
+            );
+        }
         else if (executeBody.includes(`${functionName}(`)) {
             executeBody = executeBody.replaceAll(
                 `${functionName}(`, `this.alu.${functionName}(`

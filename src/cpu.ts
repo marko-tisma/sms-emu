@@ -9,7 +9,7 @@ export enum RegisterName {
     B, C, D, E, H, L, F, A
 }
 
-enum DecodingMode {
+export enum DecodingMode {
     TABLE, DECODE
 }
 
@@ -73,14 +73,15 @@ export class Cpu {
     iff2 = false;
 
     // Table mode trades off using more memory for better execution time
-    decodingMode = DecodingMode.TABLE;
+    decodingMode: DecodingMode;
     instructionTable: Function[] = [];
 
     // Instruction functions in table mode are scoped to cpu object so they need these
     alu = alu;
     RegisterName = RegisterName;
 
-    constructor(public bus: Bus) {
+    constructor(public bus: Bus, decodingMode = DecodingMode.TABLE) {
+        this.decodingMode = decodingMode;
         this.registers = Array.from({ length: 8 }, () => new Register(1));
         this.shadowRegisters = Array.from({ length: 8 }, () => new Register(1));
         this.sp = 0xdff0;
@@ -312,5 +313,4 @@ export class Cpu {
 
     set sp(value: number) { this._sp.value = value; }
 }
-
 
