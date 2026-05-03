@@ -82,7 +82,7 @@ export class Sms {
 		const maxMs = 1000 / this.timing.fps * 2;
 		if (deltaMs > maxMs) deltaMs = maxMs;
 
-		const tstatesToEmulate = deltaMs * this.tstatesPerMs + this.tstatesFromLastFrame;
+		const tstatesToEmulate = deltaMs * this.tstatesPerMs - this.tstatesFromLastFrame;
 		let tstatesElapsed = 0;
 		while (tstatesElapsed < tstatesToEmulate) {
 			if (this.debugger.breakpoints.has(this.cpu.pc)) {
